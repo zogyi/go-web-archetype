@@ -9,9 +9,9 @@ import (
 var logger *zap.Logger
 var cleanUp func()
 
-func InitLog(logLevel string) {
+func InitLog(path string, logLevel string) {
 	hook := lumberjack.Logger{
-		Filename:   "/Users/zhongyi/workspace/golang/hotel-management-backend/log/log.out",  //日志文件路径
+		Filename:   path,  //日志文件路径
 		MaxSize:    1024, //最大字节
 		MaxAge:     30,
 		MaxBackups: 7,
