@@ -1,4 +1,4 @@
-package dal
+package go_web_archetype
 
 import (
 	"database/sql"
@@ -44,12 +44,22 @@ type fieldInfo struct {
 	Type 		string
 }
 
+var genericDao *GenericDao
+
+func G()  GenericDao{
+	return *genericDao
+}
+
 type GenericDao struct {
-	DB                 *sqlx.DB
+	db                 *sqlx.DB
 	bondEntities       []interface{}
 	entityTableMapping map[string]string
 	entityFieldMapping map[string]map[string]*fieldInfo
 	commonFields 	   util.CommonFields
+}
+
+func New(db *sqlx.DB) {
+	genericDao = &GenericDao{db: db}
 }
 
 func (gd *GenericDao) GetBondEntities() []interface{} {
