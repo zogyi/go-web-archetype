@@ -58,9 +58,9 @@ type GenericDao struct {
 	commonFields 	   util.CommonFields
 }
 
-func New(db *sqlx.DB) *GenericDao{
+func NewGenericDao(db *sqlx.DB) *GenericDao{
 	genericDao = &GenericDao{db: db}
-	return genericDao;
+	return genericDao
 }
 
 func (gd *GenericDao) GetBondEntities() []interface{} {
