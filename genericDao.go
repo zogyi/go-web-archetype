@@ -62,6 +62,10 @@ func NewGenericDao(db *sqlx.DB) *GenericDao{
 	return &GenericDao{db: db}
 }
 
+func (gd *GenericDao) DB() sqlx.DB {
+	return *gd.db
+}
+
 func (gd *GenericDao) GetBondEntities() []interface{} {
 	return gd.bondEntities
 }
