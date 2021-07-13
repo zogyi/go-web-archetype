@@ -1,4 +1,4 @@
-package go_web_archetype
+package dal
 
 import (
 	"database/sql"
@@ -20,8 +20,8 @@ type QueryItem struct {
 }
 
 type QueryWrapper struct {
-	And   []QueryItem 		`json:"and"`
-	Group map[string]string	`json:"group"`
+	And   []QueryItem       `json:"and"`
+	Group map[string]string `json:"group"`
 }
 
 type ExtraQueryWrapper struct {
