@@ -135,7 +135,7 @@ func (gd *GenericDao) Get(intf interface{}, columns []string, args []interface{}
 		panic(err)
 	}
 	entity := reflect.New(reflect.TypeOf(intf))
-	err = gd.DB.Get(entity.Interface(), querySql, args...)
+	err = gd.db.Get(entity.Interface(), querySql, args...)
 	if err != nil {
 		panic(err)
 	}
@@ -201,7 +201,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if tx != nil {
 		err = tx.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
 	} else {
-		err = gd.DB.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
+		err = gd.db.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
 	}
 	if err != nil {
 		return nil, err
@@ -218,7 +218,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 		tx = tx.Unsafe()
 		err = tx.Select(x.Interface(), mySql, sqlArgs...)
 	} else {
-		db := gd.DB.Unsafe()
+		db := gd.db.Unsafe()
 		err = db.Select(x.Interface(), mySql, sqlArgs...)
 	}
 	return x.Interface(), err
@@ -332,7 +332,7 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	if tx != nil {
 		stmt, err = tx.Preparex(sqlQuery)
 	} else {
-		stmt, err = gd.DB.Preparex(sqlQuery)
+		stmt, err = gd.db.Preparex(sqlQuery)
 	}
 	if err != nil {
 		return nil, err
@@ -380,7 +380,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	if tx != nil {
 		stmt, err = tx.Preparex(sqlQuery)
 	} else {
-		stmt, err = gd.DB.Preparex(sqlQuery)
+		stmt, err = gd.db.Preparex(sqlQuery)
 	}
 	if err != nil {
 		return nil, err
@@ -400,7 +400,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 		if tx != nil {
 			err = tx.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
 		} else {
-			err = gd.DB.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
+			err = gd.db.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
 		}
 
 		if err != nil {
@@ -450,7 +450,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	if tx != nil {
 		result, err = tx.Exec(sql, queryArgs...)
 	} else {
-		result, err = gd.DB.Exec(sql, queryArgs...)
+		result, err = gd.db.Exec(sql, queryArgs...)
 	}
 
 	if err != nil {
