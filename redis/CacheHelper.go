@@ -11,7 +11,7 @@ type MyCacheHelper struct {
 	context    context.Context
 }
 
-func New(client *redis.Client, ctx context.Context) *MyCacheHelper {
+func NewCacheHelper(client *redis.Client, ctx context.Context) *MyCacheHelper {
 	helper := MyCacheHelper{
 		client:     client,
 		context:    ctx,
