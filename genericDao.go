@@ -44,12 +44,6 @@ type fieldInfo struct {
 	Type 		string
 }
 
-var genericDao *GenericDao
-
-func GDao() GenericDao{
-	return *genericDao
-}
-
 type GenericDao struct {
 	db                 *sqlx.DB
 	bondEntities       []interface{}
@@ -59,8 +53,13 @@ type GenericDao struct {
 }
 
 func NewGenericDao(db *sqlx.DB) *GenericDao{
-	genericDao = &GenericDao{db: db}
-	return genericDao
+	if db == nil {
+		panic(`the pointer of database is nil`)
+	}
+	if db.Ping() != nil {
+		panic(`can't connect to the database`)
+	}
+	return &GenericDao{db: db}
 }
 
 func (gd *GenericDao) GetBondEntities() []interface{} {
