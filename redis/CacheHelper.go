@@ -3,21 +3,18 @@ package cache
 import (
 	"context"
 	"github.com/go-redis/redis/v8"
-	"github.com/***REMOVED***/go-web-archetype"
 	"time"
 )
 
 type MyCacheHelper struct {
 	client     *redis.Client
 	context    context.Context
-	genericDao *go_web_archetype.GenericDao
 }
 
-func New(client *redis.Client, ctx context.Context, dao *go_web_archetype.GenericDao) *MyCacheHelper {
+func New(client *redis.Client, ctx context.Context) *MyCacheHelper {
 	helper := MyCacheHelper{
 		client:     client,
 		context:    ctx,
-		genericDao: dao,
 	}
 	return &helper
 }
