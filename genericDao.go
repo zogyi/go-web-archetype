@@ -98,7 +98,6 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	}
 	gd.entityFieldMapping[crtIrf.Name()] = fieldsMapping
 	gd.bondEntities = append(gd.bondEntities, interf)
-	fmt.Println(fieldsMapping)
 }
 
 func getFieldInfo(field reflect.StructField) *fieldInfo {
