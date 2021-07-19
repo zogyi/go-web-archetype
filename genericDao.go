@@ -184,24 +184,12 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
 	}
 
-	if extraQuery == nil {
-		extraQuery = &ExtraQueryWrapper{CurrentUsername: ``}
-	}
-	if extraQuery.Pagination == nil {
-		extraQuery.Pagination = &util.Pagination{PageSize: 10, CurrentPage: 0}
-	}
-
-	columns, sqlArgs := gd.getValidColumnVal(intf)
-	var eqClause sq.And
-	for i := 0; i < len(columns); i++ {
-		eqClause = append(eqClause, sq.Eq{columns[i]: `?`})
-	}
-	eqClause = append(eqClause, sq.Eq{`del`: `?`})
-	sqlArgs = append(sqlArgs, 0)
-	countSql, _, err := sq.Select(`count(1)`).From(table).Where(eqClause).ToSql()
+	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
+	countSql, _, err := sq.Select("count(*)").FromSelect(sqlBuilder, `t`).ToSql()
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
 	}
+
 	if tx != nil {
 		err = tx.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
 	} else {
@@ -210,8 +198,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if err != nil {
 		return nil, err
 	}
-	mySql, _, err := sq.Select(`*`).From(table).Where(eqClause).
-		Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
+	mySql, _, err := sqlBuilder.Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +245,7 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	var values []interface{}
 	if extraQuery != nil && extraQuery.Query != nil {
 		for i := 0; i < len(extraQuery.Query.And); i++ {
-			currentOperator := strings.TrimSpace(extraQuery.Query.And[i].Operator)
+			currentOperator := strings.ToLower(strings.TrimSpace(extraQuery.Query.And[i].Operator))
 			currentJSONFields := strings.TrimSpace(extraQuery.Query.And[i].Field)
 			currentValue := strings.TrimSpace(extraQuery.Query.And[i].Value)
 			var currentTableField string
@@ -281,6 +268,8 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				extraAnd = append(extraAnd, sq.GtOrEq{currentTableField: `?`})
 			} else if currentOperator == `lte` || currentOperator == `>=` {
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: `?`})
+			} else if currentOperator == `like` {
+				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
 			} else {
 				return nil, nil, errors.New(`unrecognised operator: ` + currentOperator)
 			}
