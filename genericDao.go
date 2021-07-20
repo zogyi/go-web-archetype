@@ -31,6 +31,11 @@ type ExtraQueryWrapper struct {
 	NullFields		[]string
 }
 
+func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper{
+	return &ExtraQueryWrapper{Pagination: &util.Pagination{PageSize: 10, CurrentPage: 0}, Query: &QueryWrapper{}}
+}
+
+
 const (
 	FIXED_COLUMN_ID        string = `id`
 	FIXED_COLUMN_CREATE_BY string = `create_by`
@@ -176,6 +181,9 @@ func (gd *GenericDao) SelectWithExtraQuery(intf interface{}, extraQuery *ExtraQu
 }
 
 func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		return nil, errors.New(`the interface should be a struct non of pointer`)
 	}
@@ -216,6 +224,9 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 }
 
 func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.SelectBuilder, []interface{}) {
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 	columns, sqlArgs := gd.getValidColumnVal(intf)
 	var and sq.And
@@ -236,6 +247,9 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 
 
 func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.And, []interface{}, error){
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	var extraAnd sq.And
 	currentTable := reflect.TypeOf(intf).Name()
 	currentFieldMapping := gd.entityFieldMapping[currentTable]
@@ -292,6 +306,10 @@ func (gd *GenericDao) UpdateWithExtraQuery(intf interface{}, extraQueryWrapper *
 
 func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (sql.Result, error) {
 	//tableName := entityTableMapping[reflect.TypeOf(intf).String()]
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
+	}
+
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -344,6 +362,9 @@ func (gd *GenericDao) InsertWithExtraQuery(interf interface{}, extraQueryWrapper
 }
 
 func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
+	}
 	if reflect.TypeOf(interf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -418,6 +439,9 @@ func (gd *GenericDao) DeleteWithExtraQuery(intf interface{}, extraQueryWrapper *
 func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) error {
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		return errors.New(`the interface should be a struct non of pointer`)
+	}
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 	columns, args := gd.getValidColumnVal(intf)
