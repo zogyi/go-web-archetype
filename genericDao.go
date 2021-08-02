@@ -31,6 +31,11 @@ type ExtraQueryWrapper struct {
 	NullFields		[]string
 }
 
+func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper{
+	return &ExtraQueryWrapper{Pagination: &util.Pagination{PageSize: 10, CurrentPage: 0}, Query: &QueryWrapper{}}
+}
+
+
 const (
 	FIXED_COLUMN_ID        string = `id`
 	FIXED_COLUMN_CREATE_BY string = `create_by`
@@ -214,6 +219,9 @@ func (gd *GenericDao) SelectWithExtraQuery(intf interface{}, extraQuery *ExtraQu
 }
 
 func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		return nil, errors.New(`the interface should be a struct non of pointer`)
 	}
@@ -222,24 +230,12 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
 	}
 
-	if extraQuery == nil {
-		extraQuery = &ExtraQueryWrapper{CurrentUsername: ``}
-	}
-	if extraQuery.Pagination == nil {
-		extraQuery.Pagination = &util.Pagination{PageSize: 10, CurrentPage: 0}
-	}
-
-	columns, sqlArgs := gd.getValidColumnVal(intf)
-	var eqClause sq.And
-	for i := 0; i < len(columns); i++ {
-		eqClause = append(eqClause, sq.Eq{columns[i]: `?`})
-	}
-	eqClause = append(eqClause, sq.Eq{`del`: `?`})
-	sqlArgs = append(sqlArgs, 0)
-	countSql, _, err := sq.Select(`count(1)`).From(table).Where(eqClause).ToSql()
+	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
+	countSql, _, err := sq.Select("count(*)").FromSelect(sqlBuilder, `t`).ToSql()
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
 	}
+
 	if tx != nil {
 		err = tx.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
 	} else {
@@ -248,8 +244,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if err != nil {
 		return nil, err
 	}
-	mySql, _, err := sq.Select(`*`).From(table).Where(eqClause).
-		Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
+	mySql, _, err := sqlBuilder.Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +262,9 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 }
 
 func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.SelectBuilder, []interface{}) {
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 	columns, sqlArgs := gd.getValidColumnVal(intf)
 	var and sq.And
@@ -287,6 +285,9 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 
 
 func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.And, []interface{}, error){
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
 	var extraAnd sq.And
 	currentTable := reflect.TypeOf(intf).Name()
 	currentFieldMapping := gd.entityFieldMapping[currentTable]
@@ -296,7 +297,7 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	var values []interface{}
 	if extraQuery != nil && extraQuery.Query != nil {
 		for i := 0; i < len(extraQuery.Query.And); i++ {
-			currentOperator := strings.TrimSpace(extraQuery.Query.And[i].Operator)
+			currentOperator := strings.ToLower(strings.TrimSpace(extraQuery.Query.And[i].Operator))
 			currentJSONFields := strings.TrimSpace(extraQuery.Query.And[i].Field)
 			currentValue := strings.TrimSpace(extraQuery.Query.And[i].Value)
 			var currentTableField string
@@ -319,6 +320,8 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				extraAnd = append(extraAnd, sq.GtOrEq{currentTableField: `?`})
 			} else if currentOperator == `lte` || currentOperator == `>=` {
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: `?`})
+			} else if currentOperator == `like` {
+				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
 			} else {
 				return nil, nil, errors.New(`unrecognised operator: ` + currentOperator)
 			}
@@ -341,6 +344,10 @@ func (gd *GenericDao) UpdateWithExtraQuery(intf interface{}, extraQueryWrapper *
 
 func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (sql.Result, error) {
 	//tableName := entityTableMapping[reflect.TypeOf(intf).String()]
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
+	}
+
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -393,6 +400,9 @@ func (gd *GenericDao) InsertWithExtraQuery(interf interface{}, extraQueryWrapper
 }
 
 func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
+	}
 	if reflect.TypeOf(interf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -467,6 +477,9 @@ func (gd *GenericDao) DeleteWithExtraQuery(intf interface{}, extraQueryWrapper *
 func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) error {
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		return errors.New(`the interface should be a struct non of pointer`)
+	}
+	if extraQueryWrapper == nil {
+		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 	columns, args := gd.getValidColumnVal(intf)
