@@ -35,14 +35,6 @@ type ResponseObj struct {
 	Result  interface{} `json:"result"`
 }
 
-type CommonFields struct {
-	CreateTime MyNullTime `json:"create_time" db:"create_time"`
-	CreatorBy  null.String     `json:"create_by" db:"create_by"`
-	UpdateTime MyNullTime `json:"update_time" db:"update_time"`
-	UpdateBy   null.String     `json:"update_by" db:"update_by"`
-	Del        null.Bool       `db:"del" json:"-"`
-}
-
 
 var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
 var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")

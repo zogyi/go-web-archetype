@@ -46,10 +46,14 @@ type fieldInfo struct {
 
 type GenericDao struct {
 	db                 *sqlx.DB
-	bondEntities       []interface{}
-	entityTableMapping map[string]string
-	entityFieldMapping map[string]map[string]*fieldInfo
-	commonFields 	   util.CommonFields
+	bondEntities       []interface{}		//所有的entity
+	entityTableMapping map[string]string    //entity与table名字之间的映射
+	entityFieldMapping map[string]map[string]*fieldInfo //entity所有的表单的映射
+
+	//自定义类型如下
+	customType  []interface{}	//用户自定义的类型
+	customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
+	//commonFields 	   util.CommonFields
 }
 
 func NewGenericDao(db *sqlx.DB) *GenericDao{
@@ -60,6 +64,38 @@ func NewGenericDao(db *sqlx.DB) *GenericDao{
 		panic(`can't connect to the database`)
 	}
 	return &GenericDao{db: db}
+}
+
+func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao{
+	//reflect.TypeOf(types).Name()
+	for i := 0; i < len(types); i++ {
+		crtType := reflect.TypeOf(types[i])
+		if crtType.Kind() != reflect.Struct {
+			panic(`wrong type of the type, should be a struct`)
+		}
+		//添加到自定义类型中
+		currentTypeName := crtType.Name()
+		crtTypeFieldMap := make(map[string]*fieldInfo)
+		for k :=0; k < crtType.NumField(); k++ {
+			crtField := crtType.Field(k)
+			crtTypeFieldMap[crtField.Name] = getFieldInfo(crtField)
+		}
+		if gd.customTypeFieldMapping == nil {
+			gd.customTypeFieldMapping = make(map[string]map[string]*fieldInfo)
+		}
+		gd.customTypeFieldMapping[currentTypeName] = crtTypeFieldMap
+	}
+	gd.customType = append(gd.customType, types)
+	return gd
+}
+
+func (gd *GenericDao) containCustomType(fieldType reflect.Type) bool {
+	for i := 0; i < len(gd.customType); i ++ {
+		if reflect.TypeOf(gd.customType) == fieldType {
+			return true
+		}
+	}
+	return false
 }
 
 func (gd *GenericDao) DB() *sqlx.DB {
@@ -87,10 +123,13 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	fieldCount := reflect.TypeOf(interf).NumField()
 	for i := 0; i < fieldCount; i++ {
 		currentField := reflect.TypeOf(interf).Field(i)
-		if currentField.Type == reflect.TypeOf(gd.commonFields) {
-			for k := 0; k < reflect.TypeOf(gd.commonFields).NumField(); k++ {
-				commonField := reflect.TypeOf(gd.commonFields).Field(k)
-				fieldsMapping[commonField.Name] = getFieldInfo(commonField)
+		if gd.containCustomType(currentField.Type) {
+			if customTypeFields, ok := gd.customTypeFieldMapping[currentField.Name]; ok {
+				for k, v := range customTypeFields {
+					fieldsMapping[k] = v
+				}
+			} else {
+				panic(`can't found the required type`)
 			}
 		} else {
 			fieldsMapping[currentField.Name] = getFieldInfo(currentField)
