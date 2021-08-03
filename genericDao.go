@@ -90,13 +90,13 @@ func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao{
 		}
 		gd.customTypeFieldMapping[currentTypeName] = crtTypeFieldMap
 	}
-	gd.customType = append(gd.customType, types)
+	gd.customType = append(gd.customType, types...)
 	return gd
 }
 
 func (gd *GenericDao) containCustomType(fieldType reflect.Type) bool {
 	for i := 0; i < len(gd.customType); i ++ {
-		if reflect.TypeOf(gd.customType) == fieldType {
+		if reflect.TypeOf(gd.customType[i]) == fieldType {
 			return true
 		}
 	}
@@ -553,6 +553,13 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]string, []interface
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Time
 		default:
+			if gd.containCustomType(reflect.TypeOf(intf).Field(i).Type) {
+				crtVal := reflect.ValueOf(intf).Field(i).Interface()
+				customColumns, customValues :=  gd.getValidColumnVal(crtVal)
+				columns = append(columns, customColumns...)
+				values = append(values, customValues...)
+				//gd.getValidColumnVal()
+			}
 			println(`can't find`)
 		}
 		if fieldHasValue {
