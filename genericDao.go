@@ -16,7 +16,7 @@ import (
 type QueryItem struct {
 	Field 		string		`json:"field"`
 	Operator    string		`json:"operator"`
-	Value       string 		`json:"value"`
+	Value       interface{} `json:"value"`
 }
 
 type QueryWrapper struct {
@@ -297,9 +297,10 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	var values []interface{}
 	if extraQuery != nil && extraQuery.Query != nil {
 		for i := 0; i < len(extraQuery.Query.And); i++ {
+			var currentValue interface{}
 			currentOperator := strings.ToLower(strings.TrimSpace(extraQuery.Query.And[i].Operator))
 			currentJSONFields := strings.TrimSpace(extraQuery.Query.And[i].Field)
-			currentValue := strings.TrimSpace(extraQuery.Query.And[i].Value)
+			currentValue = extraQuery.Query.And[i].Value
 			var currentTableField string
 			for _, fieldInfo := range currentFieldMapping {
 				if fieldInfo.JSONField == currentJSONFields {
@@ -322,6 +323,13 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: `?`})
 			} else if currentOperator == `like` {
 				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
+			} else if currentOperator == `in`  {
+				extraAnd = append(extraAnd, sq.Eq{currentTableField: `?`})
+				//if current value is string, then convert it to the string and split the string with comma
+				queryVal := reflect.ValueOf(currentValue)
+				if queryVal.Kind()  == reflect.String {
+					currentValue = strings.Split(currentValue.(string), `,`)
+				}
 			} else {
 				return nil, nil, errors.New(`unrecognised operator: ` + currentOperator)
 			}
