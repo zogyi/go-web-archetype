@@ -308,10 +308,10 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 					break
 				}
 			}
-			if currentTable == `` {
+			if strings.TrimSpace(currentTable) == `` ||  strings.TrimSpace(currentTableField) == `` {
 				return nil, nil, errors.New(`can't find field mapping for the entity and the field ` + currentTable + ` , ` + currentTableField )
 			}
-			if currentOperator == `eq` || currentOperator == `=` {
+ 			if currentOperator == `eq` || currentOperator == `=` {
 				extraAnd = append(extraAnd, sq.Eq{currentTableField: `?`})
 			} else if currentOperator == `gt` || currentOperator == `>` {
 				extraAnd = append(extraAnd, sq.Gt{currentTableField: `?`})
@@ -324,12 +324,15 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 			} else if currentOperator == `like` {
 				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
 			} else if currentOperator == `in`  {
-				extraAnd = append(extraAnd, sq.Eq{currentTableField: `?`})
-				//if current value is string, then convert it to the string and split the string with comma
 				queryVal := reflect.ValueOf(currentValue)
 				if queryVal.Kind()  == reflect.String {
 					currentValue = strings.Split(currentValue.(string), `,`)
 				}
+				inParams := util.InterfaceSlice(currentValue)
+				//if current value is string, then convert it to the string and split the string with comma
+				extraAnd = append(extraAnd, sq.Eq{currentTableField: inParams})
+				values = append(values, inParams...)
+				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
 			} else {
 				return nil, nil, errors.New(`unrecognised operator: ` + currentOperator)
 			}
@@ -338,6 +341,9 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	}
 	return extraAnd, values, nil
 }
+
+
+
 
 
 
