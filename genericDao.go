@@ -3,7 +3,6 @@ package go_web_archetype
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/util"
@@ -59,6 +58,7 @@ type GenericDao struct {
 	customType  []interface{}	//用户自定义的类型
 	customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
 	//commonFields 	   util.CommonFields
+	sysControlFields []string
 }
 
 func NewGenericDao(db *sqlx.DB) *GenericDao{
@@ -71,8 +71,15 @@ func NewGenericDao(db *sqlx.DB) *GenericDao{
 	return &GenericDao{db: db}
 }
 
+func NewGenericDaoWithCustomerType(db *sqlx.DB, types ...interface{}) *GenericDao {
+	dao := NewGenericDao(db)
+	dao.AddCustomType(types...)
+	return dao
+}
+
 func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao{
 	//reflect.TypeOf(types).Name()
+	gd.sysControlFields = []string{`create_by`, `create_time`, `update_by`, `update_time`, `del`}
 	for i := 0; i < len(types); i++ {
 		crtType := reflect.TypeOf(types[i])
 		if crtType.Kind() != reflect.Struct {
@@ -160,54 +167,26 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 }
 
 func (gd *GenericDao) GetById(intf interface{}, id uint64) (interface{}, error) {
-	return gd.Get(intf, []string{`id`}, []interface{}{id}, false)
+	objType := reflect.TypeOf(intf)
+	result := reflect.New(objType)
+	result.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(int64(id))))
+	return gd.Get(result.Elem().Interface(), NewDefaultExtraQueryWrapper())
 }
 
-func (gd *GenericDao) Get(intf interface{}, columns []string, args []interface{}, forceResult bool) (interface{}, error) {
-	if reflect.TypeOf(intf).Kind() != reflect.Struct {
-		return nil, errors.New(`the interface should be a struct non of pointer`)
-	}
-	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	if table == `` || strings.TrimSpace(table) == `` {
-		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
-	}
-	if len(columns) == 0 || len(columns) != len(args) {
-		return nil, errors.New(`no query criteria found`)
-	}
-	columns = append(columns, `del`)
-	args = append(args, 0)
-	whereClause := strings.Join(columns, ` = ?  and `) + ` = ?`
-	querySql, _, err := sq.Select(`*`).From(table).Where(whereClause).ToSql()
-	if err != nil {
-		panic(err)
-	}
-	entity := reflect.New(reflect.TypeOf(intf))
-	err = gd.db.Get(entity.Interface(), querySql, args...)
-	if err != nil {
-		panic(err)
-	}
-	return entity.Interface(), nil
-}
-
-func (gd *GenericDao) GetOne(intf interface{}) (interface{}, error)  {
-	queryResult, err := gd.Select(intf)
+//GetOne return the pointer of the result object
+func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper) (interface{}, error)  {
+	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
+	sql, _, err := sqlBuilder.ToSql()
 	if err != nil {
 		return nil, err
 	}
-	s := reflect.ValueOf(queryResult)
-	if s.Kind() == reflect.Ptr {
-		s = s.Elem()
+	resultType := reflect.TypeOf(intf)
+	resultVal := reflect.New(resultType)
+	err = gd.DB().Get(resultVal.Interface(), sql, sqlArgs...)
+	if err != nil {
+		return nil, err
 	}
-	if s.Kind() == reflect.Slice {
-		if s.Len() == 1 {
-			return s.Index(0).Interface(), nil
-		} else if s.Len() == 0 {
-			return nil, nil
-		} else {
-			return nil, errors.New(`result more than one`)
-		}
-	}
-	return nil, errors.New(`unknown error`)
+	return resultVal.Interface(), nil
 }
 
 func (gd *GenericDao) Select(intf interface{}) (interface{}, error) {
@@ -343,10 +322,6 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 }
 
 
-
-
-
-
 func (gd *GenericDao) Update(intf interface{}) (sql.Result, error) {
 	return gd.UpdateWithExtraQuery(intf, nil)
 }
@@ -356,6 +331,7 @@ func (gd *GenericDao) UpdateWithExtraQuery(intf interface{}, extraQueryWrapper *
 	return gd.UpdateWithExtraQueryWithTx(intf, extraQueryWrapper, nil)
 }
 
+//update remove the common fields
 func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (sql.Result, error) {
 	//tableName := entityTableMapping[reflect.TypeOf(intf).String()]
 	if extraQueryWrapper == nil {
@@ -375,7 +351,9 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 			id = sqlArgs[i]
 			continue
 		}
-		setMap[columns[i]] = sqlArgs[i]
+		if !util.StringInSlice(columns[i], gd.sysControlFields) {
+			setMap[columns[i]] = sqlArgs[i]
+		}
 	}
 	for i := 0; i < len(extraQueryWrapper.NullFields); i++ {
 		setMap[extraQueryWrapper.NullFields[i]] = null.Int{}
@@ -470,7 +448,6 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 		}
 
 		if err != nil {
-			fmt.Println(err)
 			return nil, err
 		} else {
 			return newInterface.Interface(), err
@@ -574,7 +551,6 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]string, []interface
 				values = append(values, customValues...)
 				//gd.getValidColumnVal()
 			}
-			println(`can't find`)
 		}
 		if fieldHasValue {
 			crtColumnName := reflect.TypeOf(intf).Field(i).Tag.Get("db")
