@@ -6,16 +6,26 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/util"
+	"go.uber.org/zap"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"strings"
 )
 
+type CommonFields struct {
+	Id         null.Int        `json:"id" archType:"primaryKey"`
+	CreateTime util.MyNullTime `json:"create_time" db:"create_time" archType:"autoFill"`
+	CreatorBy  null.String     `json:"create_by" db:"create_by" archType:"autoFill"`
+	UpdateTime util.MyNullTime `json:"update_time" db:"update_time" archType:"autoFill"`
+	UpdateBy   null.String     `json:"update_by" db:"update_by" archType:"autoFill"`
+	Del        null.Bool       `json:"-" db:"del" archType:"autoFill"`
+}
+
 //TODO: 1. extract the field and columns mapping and save into a map
 type QueryItem struct {
-	Field 		string		`json:"field"`
-	Operator    string		`json:"operator"`
-	Value       interface{} `json:"value"`
+	Field    string      `json:"field"`
+	Operator string      `json:"operator"`
+	Value    interface{} `json:"value"`
 }
 
 type QueryWrapper struct {
@@ -27,41 +37,44 @@ type ExtraQueryWrapper struct {
 	CurrentUsername string
 	Pagination      *util.Pagination
 	Query           *QueryWrapper
-	NullFields		[]string
+	NullFields      []string
 }
 
-func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper{
+func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper {
 	return &ExtraQueryWrapper{Pagination: &util.Pagination{PageSize: 10, CurrentPage: 0}, Query: &QueryWrapper{}}
 }
 
-
 const (
-	FIXED_COLUMN_ID        string = `id`
-	FIXED_COLUMN_CREATE_BY string = `create_by`
-	FIXED_COLUMN_UPDATE_BY string = `update_by`
+	FIXED_COLUMN_ID     string = `id`
+	FixedColumnCreateBy string = `create_by`
+	FixedColumnUpdateBy string = `update_by`
+	TagArchType         string = `archType`
+	TagPrimaryKey       string = `primaryKey`
+	TagAutoFilled       string = `autoFill`
 )
 
 type fieldInfo struct {
-	Field		string
-	JSONField	string
-	TableField	string
-	Type 		string
+	Field        string
+	JSONField    string
+	TableField   string
+	Type         string
+	IsPrimaryKey bool
+	AutoFilled   bool
 }
 
 type GenericDao struct {
 	db                 *sqlx.DB
-	bondEntities       []interface{}		//所有的entity
-	entityTableMapping map[string]string    //entity与table名字之间的映射
+	bondEntities       []interface{}                    //所有的entity
+	entityTableMapping map[string]string                //entity与table名字之间的映射
 	entityFieldMapping map[string]map[string]*fieldInfo //entity所有的表单的映射
 
 	//自定义类型如下
-	customType  []interface{}	//用户自定义的类型
-	customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
+	customType             []interface{}                    //用户自定义的类型
+	//customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
 	//commonFields 	   util.CommonFields
-	sysControlFields []string
 }
 
-func NewGenericDao(db *sqlx.DB) *GenericDao{
+func NewGenericDao(db *sqlx.DB) *GenericDao {
 	if db == nil {
 		panic(`the pointer of database is nil`)
 	}
@@ -71,15 +84,19 @@ func NewGenericDao(db *sqlx.DB) *GenericDao{
 	return &GenericDao{db: db}
 }
 
+func NewDaoWithDefaultCustomerType(db *sqlx.DB) *GenericDao {
+	dao := NewGenericDaoWithCustomerType(db, CommonFields{})
+	return dao
+}
+
 func NewGenericDaoWithCustomerType(db *sqlx.DB, types ...interface{}) *GenericDao {
 	dao := NewGenericDao(db)
 	dao.AddCustomType(types...)
 	return dao
 }
 
-func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao{
+func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao {
 	//reflect.TypeOf(types).Name()
-	gd.sysControlFields = []string{`create_by`, `create_time`, `update_by`, `update_time`, `del`}
 	for i := 0; i < len(types); i++ {
 		crtType := reflect.TypeOf(types[i])
 		if crtType.Kind() != reflect.Struct {
@@ -88,21 +105,21 @@ func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao{
 		//添加到自定义类型中
 		currentTypeName := crtType.Name()
 		crtTypeFieldMap := make(map[string]*fieldInfo)
-		for k :=0; k < crtType.NumField(); k++ {
+		for k := 0; k < crtType.NumField(); k++ {
 			crtField := crtType.Field(k)
 			crtTypeFieldMap[crtField.Name] = getFieldInfo(crtField)
 		}
-		if gd.customTypeFieldMapping == nil {
-			gd.customTypeFieldMapping = make(map[string]map[string]*fieldInfo)
+		if gd.entityFieldMapping == nil {
+			gd.entityFieldMapping = make(map[string]map[string]*fieldInfo)
 		}
-		gd.customTypeFieldMapping[currentTypeName] = crtTypeFieldMap
+		gd.entityFieldMapping[currentTypeName] = crtTypeFieldMap
 	}
 	gd.customType = append(gd.customType, types...)
 	return gd
 }
 
 func (gd *GenericDao) containCustomType(fieldType reflect.Type) bool {
-	for i := 0; i < len(gd.customType); i ++ {
+	for i := 0; i < len(gd.customType); i++ {
 		if reflect.TypeOf(gd.customType[i]) == fieldType {
 			return true
 		}
@@ -136,7 +153,7 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	for i := 0; i < fieldCount; i++ {
 		currentField := reflect.TypeOf(interf).Field(i)
 		if gd.containCustomType(currentField.Type) {
-			if customTypeFields, ok := gd.customTypeFieldMapping[currentField.Name]; ok {
+			if customTypeFields, ok := gd.entityFieldMapping[currentField.Name]; ok {
 				for k, v := range customTypeFields {
 					fieldsMapping[k] = v
 				}
@@ -145,6 +162,7 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 			}
 		} else {
 			fieldsMapping[currentField.Name] = getFieldInfo(currentField)
+
 		}
 	}
 	gd.entityFieldMapping[crtIrf.Name()] = fieldsMapping
@@ -163,7 +181,19 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 	if strings.TrimSpace(jsonTag) != `` || strings.TrimSpace(jsonTag) != `-` {
 		jsonField = jsonTag
 	}
-	return &fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name()}
+	sqlTag := field.Tag.Get(TagArchType)
+	var isPrimaryKey bool
+	var autoFill bool
+	if strings.TrimSpace(sqlTag) != `` {
+		sqlItems := strings.Split(strings.TrimSpace(sqlTag), `,`)
+		if util.StringInSlice(TagPrimaryKey, sqlItems) {
+			isPrimaryKey = true
+		}
+		if util.StringInSlice(TagAutoFilled, sqlItems) {
+			autoFill = true
+		}
+	}
+	return &fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill}
 }
 
 func (gd *GenericDao) GetById(intf interface{}, id uint64) (interface{}, error) {
@@ -174,7 +204,7 @@ func (gd *GenericDao) GetById(intf interface{}, id uint64) (interface{}, error) 
 }
 
 //GetOne return the pointer of the result object
-func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper) (interface{}, error)  {
+func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper) (interface{}, error) {
 	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
 	sql, _, err := sqlBuilder.ToSql()
 	if err != nil {
@@ -182,6 +212,7 @@ func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper) (inte
 	}
 	resultType := reflect.TypeOf(intf)
 	resultVal := reflect.New(resultType)
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, sqlArgs)
 	err = gd.DB().Get(resultVal.Interface(), sql, sqlArgs...)
 	if err != nil {
 		return nil, err
@@ -214,7 +245,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
 	}
-
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", countSql, sqlArgs)
 	if tx != nil {
 		err = tx.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
 	} else {
@@ -230,6 +261,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	result := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(intf)), 0, 10)
 	x := reflect.New(result.Type())
 	x.Elem().Set(result)
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", mySql, sqlArgs)
 	if tx != nil {
 		tx = tx.Unsafe()
 		err = tx.Select(x.Interface(), mySql, sqlArgs...)
@@ -245,10 +277,13 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	columns, sqlArgs := gd.getValidColumnVal(intf)
+	fields, values  := gd.getValidColumnVal(intf)
+
 	var and sq.And
-	for i := 0; i < len(columns); i++ {
-		and = append(and, sq.Eq{columns[i]: `?`})
+	var sqlArgs []interface{}
+	for i := 0; i < len(fields); i++ {
+		and = append(and, sq.Eq{fields[i].TableField: `?`})
+		sqlArgs = append(sqlArgs, values[i])
 	}
 	and = append(and, sq.Eq{`del`: `?`})
 	sqlArgs = append(sqlArgs, 0)
@@ -262,16 +297,15 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 	return selectBuilder, sqlArgs
 }
 
-
-func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.And, []interface{}, error){
+func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.And, []interface{}, error) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	var extraAnd sq.And
-	currentTable := reflect.TypeOf(intf).Name()
-	currentFieldMapping := gd.entityFieldMapping[currentTable]
-	for currentFieldMapping == nil || len(currentFieldMapping) == 0{
-		return nil, nil, errors.New(`can't find fields mapping for the entity ` + currentTable)
+	currentEntity := reflect.TypeOf(intf).Name()
+	currentFieldMapping := gd.entityFieldMapping[currentEntity]
+	for currentFieldMapping == nil || len(currentFieldMapping) == 0 {
+		return nil, nil, errors.New(`can't find fields mapping for the entity ` + currentEntity)
 	}
 	var values []interface{}
 	if extraQuery != nil && extraQuery.Query != nil {
@@ -287,10 +321,10 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 					break
 				}
 			}
-			if strings.TrimSpace(currentTable) == `` ||  strings.TrimSpace(currentTableField) == `` {
-				return nil, nil, errors.New(`can't find field mapping for the entity and the field ` + currentTable + ` , ` + currentTableField )
+			if strings.TrimSpace(currentEntity) == `` || strings.TrimSpace(currentTableField) == `` {
+				return nil, nil, errors.New(`can't find field mapping for the entity and the field ` + currentEntity + ` , ` + currentTableField)
 			}
- 			if currentOperator == `eq` || currentOperator == `=` {
+			if currentOperator == `eq` || currentOperator == `=` {
 				extraAnd = append(extraAnd, sq.Eq{currentTableField: `?`})
 			} else if currentOperator == `gt` || currentOperator == `>` {
 				extraAnd = append(extraAnd, sq.Gt{currentTableField: `?`})
@@ -302,9 +336,9 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: `?`})
 			} else if currentOperator == `like` {
 				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
-			} else if currentOperator == `in`  {
+			} else if currentOperator == `in` {
 				queryVal := reflect.ValueOf(currentValue)
-				if queryVal.Kind()  == reflect.String {
+				if queryVal.Kind() == reflect.String {
 					currentValue = strings.Split(currentValue.(string), `,`)
 				}
 				inParams := util.InterfaceSlice(currentValue)
@@ -320,7 +354,6 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	}
 	return extraAnd, values, nil
 }
-
 
 func (gd *GenericDao) Update(intf interface{}) (sql.Result, error) {
 	return gd.UpdateWithExtraQuery(intf, nil)
@@ -341,30 +374,33 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
-	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 
-	columns, sqlArgs := gd.getValidColumnVal(intf)
+	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
+	fields, values := gd.getValidColumnVal(intf)
 	setMap := sq.Eq{}
-	var id interface{}
-	for i := 0; i < len(columns); i++ {
-		if columns[i] == `id` {
-			id = sqlArgs[i]
-			continue
+	var args  []interface{}
+	for i := 0; i < len(fields); i++ {
+		if !fields[i].AutoFilled && !fields[i].IsPrimaryKey{
+			setMap[fields[i].TableField] = values[i]
 		}
-		if !util.StringInSlice(columns[i], gd.sysControlFields) {
-			setMap[columns[i]] = sqlArgs[i]
+		if fields[i].IsPrimaryKey {
+			args = append(args, values[i])
 		}
 	}
+
 	for i := 0; i < len(extraQueryWrapper.NullFields); i++ {
 		setMap[extraQueryWrapper.NullFields[i]] = null.Int{}
 	}
 	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		setMap[FIXED_COLUMN_UPDATE_BY] = extraQueryWrapper.CurrentUsername
+		setMap[FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
 	}
-	if id == nil {
+	if len(args) < 1 {
 		panic(`no identifier found`)
 	}
-	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where("id = ? and del = ?", id, 0).ToSql()
+	args = append(args, 0)
+	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where("id = ? and del = ?", args...).ToSql()
+	//zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, sqlArgs)
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
 	if err != nil {
 		return nil, errors.New(`can't generate sql from builder`)
 	}
@@ -398,20 +434,26 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	if reflect.TypeOf(interf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
-	table := gd.entityTableMapping[reflect.TypeOf(interf).Name()]
-	columns, args := gd.getValidColumnVal(interf)
-	var id interface{}
-	for i := 0; i < len(columns); i++ {
-		if columns[i] == FIXED_COLUMN_ID {
-			id = args[i]
-			break
+	table, ok := gd.entityTableMapping[reflect.TypeOf(interf).Name()]
+	if !ok {
+		return nil, errors.New(`can't find the configuration for the type of ` + reflect.TypeOf(interf).Name())
+	}
+
+	fields, values  := gd.getValidColumnVal(interf)
+	var columns []string
+	var args []interface{}
+	for i := 0; i < len(fields); i++ {
+		if !fields[i].AutoFilled {
+			columns = append(columns, fields[i].TableField)
+			args = append(args, values[i])
+		}
+		if fields[i].IsPrimaryKey {
+			return nil, errors.New(`can't set value for the identifier field`)
 		}
 	}
-	if id != nil {
-		panic(`auto generate id, shouldn't set a val`)
-	}
+
 	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		columns = append(columns, FIXED_COLUMN_CREATE_BY)
+		columns = append(columns, FixedColumnCreateBy)
 		args = append(args, extraQueryWrapper.CurrentUsername)
 	}
 
@@ -421,6 +463,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	}
 	var result sql.Result
 	var stmt *sqlx.Stmt
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
 	if tx != nil {
 		stmt, err = tx.Preparex(sqlQuery)
 	} else {
@@ -442,6 +485,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 		newInterface := util.CreateObjFromInterface(interf)
 
 		if tx != nil {
+			//TODO: prepare statement
 			err = tx.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
 		} else {
 			err = gd.db.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
@@ -473,26 +517,27 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	columns, args := gd.getValidColumnVal(intf)
-	var id interface{}
-	for i := 0; i < len(columns); i++ {
-		if columns[i] == FIXED_COLUMN_ID {
-			id = args[i]
-			break
+	fields, values  := gd.getValidColumnVal(intf)
+	var args []interface{}
+	for i := 0; i < len(fields); i++ {
+		if fields[i].IsPrimaryKey {
+			args = append(args, values[i])
 		}
 	}
-	if id == nil {
+	if len(args) < 1 {
 		panic(`no identifier found`)
 	}
 	updateBuilder := sq.Update(table).Set(`del`, 1)
 	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		updateBuilder.Set(FIXED_COLUMN_UPDATE_BY, extraQueryWrapper.CurrentUsername)
+		updateBuilder.Set(FixedColumnUpdateBy, extraQueryWrapper.CurrentUsername)
 	}
 	var result sql.Result
-	sql, queryArgs, err := updateBuilder.Where(`id = ?`, id).ToSql()
+	sql, queryArgs, err := updateBuilder.Where(`id = ?`, args...).ToSql()
+
 	if err != nil {
 		return errors.New(`some thing wrong when generating the sql`)
 	}
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, args)
 	if tx != nil {
 		result, err = tx.Exec(sql, queryArgs...)
 	} else {
@@ -509,56 +554,64 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	return err
 }
 
-func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]string, []interface{}) {
-	var columns []string
+func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]fieldInfo, []interface{}) {
+	var columns []fieldInfo
 	var values []interface{}
 	var crtActualVal interface{}
 	fieldCount := reflect.TypeOf(intf).NumField()
+	typeName := reflect.TypeOf(intf).Name()
+	fieldsConfig, ok := gd.entityFieldMapping[typeName]
+	if !ok {
+		panic(`can't find the config for the type of ` + typeName)
+	}
 	for i := 0; i < fieldCount; i++ {
+		crtField := reflect.TypeOf(intf).Field(i)
+		crtVal := reflect.ValueOf(intf).Field(i)
+
+		if gd.containCustomType(crtField.Type) {
+			crtVal := crtVal.Interface()
+			customColumns, customValues := gd.getValidColumnVal(crtVal)
+			columns = append(columns, customColumns...)
+			values = append(values, customValues...)
+			//gd.getValidColumnVal()
+			continue
+		}
 		fieldHasValue := false
-		currentField := reflect.TypeOf(intf).Field(i).Type.String()
-		currentFieldVal := reflect.ValueOf(intf).Field(i)
-		switch currentField {
+		currentField := crtField.Name
+		fConfig, ok := fieldsConfig[currentField]
+		if !ok {
+			panic(`can't find the config for the type of ` + typeName + ` field:` + currentField)
+		}
+		switch crtField.Type.String() {
 		case `null.Int`:
-			strVal := currentFieldVal.Interface().(null.Int)
+			strVal := crtVal.Interface().(null.Int)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Int64
 		case `null.String`:
-			strVal := currentFieldVal.Interface().(null.String)
+			strVal := crtVal.Interface().(null.String)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.String
 		case `null.Float`:
-			strVal := currentFieldVal.Interface().(null.Float)
+			strVal := crtVal.Interface().(null.Float)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Float64
 		case `null.Time`:
-			strVal := currentFieldVal.Interface().(null.Time)
+			strVal := crtVal.Interface().(null.Time)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Time
 		case `null.Bool`:
-			strVal := currentFieldVal.Interface().(null.Bool)
+			strVal := crtVal.Interface().(null.Bool)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Bool
 		case `util.MyNullTime`:
-			strVal := currentFieldVal.Interface().(util.MyNullTime)
+			strVal := crtVal.Interface().(util.MyNullTime)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Time
 		default:
-			if gd.containCustomType(reflect.TypeOf(intf).Field(i).Type) {
-				crtVal := reflect.ValueOf(intf).Field(i).Interface()
-				customColumns, customValues :=  gd.getValidColumnVal(crtVal)
-				columns = append(columns, customColumns...)
-				values = append(values, customValues...)
-				//gd.getValidColumnVal()
-			}
+			zap.L().Info(`can't find the configuration`)
 		}
 		if fieldHasValue {
-			crtColumnName := reflect.TypeOf(intf).Field(i).Tag.Get("db")
-			if crtColumnName != `` {
-				columns = append(columns, crtColumnName)
-			} else {
-				columns = append(columns, strings.ToLower(reflect.TypeOf(intf).Field(i).Name))
-			}
+			columns = append(columns, *fConfig)
 			values = append(values, crtActualVal)
 		}
 	}

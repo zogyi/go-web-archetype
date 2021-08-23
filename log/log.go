@@ -4,6 +4,7 @@ import (
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
 )
 
 var logger *zap.Logger
@@ -32,7 +33,12 @@ func InitLog(path string, logLevel string) {
 	encodingConfig := zap.NewProductionEncoderConfig()
 	encodingConfig.TimeKey = "timestamp"
 	encodingConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	core := zapcore.NewCore(zapcore.NewConsoleEncoder(encodingConfig), w, level)
+	var cores []zapcore.Core
+	cores = append(cores,  zapcore.NewCore(zapcore.NewConsoleEncoder(encodingConfig), w, level))
+	if level == zap.DebugLevel {
+		cores = append(cores, zapcore.NewCore(zapcore.NewConsoleEncoder(encodingConfig), zapcore.AddSync(os.Stdout), level))
+	}
+	core := zapcore.NewTee(cores...)
 	logger = zap.New(core)
 	cleanUp = zap.ReplaceGlobals(logger)
 }
