@@ -3,6 +3,7 @@ package go_web_archetype
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/util"
@@ -196,28 +197,40 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 	return &fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill}
 }
 
-func (gd *GenericDao) GetById(intf interface{}, id uint64) (interface{}, error) {
+func (gd *GenericDao) GetById(intf interface{}, id uint64, force bool) (interface{}, error) {
 	objType := reflect.TypeOf(intf)
 	result := reflect.New(objType)
 	result.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(int64(id))))
-	return gd.Get(result.Elem().Interface(), NewDefaultExtraQueryWrapper())
+	return gd.Get(result.Elem().Interface(), NewDefaultExtraQueryWrapper(), force)
 }
 
 //GetOne return the pointer of the result object
-func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper) (interface{}, error) {
+func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force bool) (interface{}, error) {
+	return gd.GetOneWithTx(intf, extraQuery, nil, force)
+}
+
+func (gd *GenericDao) GetOneWithTx (intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, force bool) (interface{}, error) {
 	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
-	sql, _, err := sqlBuilder.ToSql()
+	sqlQuery, _, err := sqlBuilder.ToSql()
 	if err != nil {
 		return nil, err
 	}
 	resultType := reflect.TypeOf(intf)
 	resultVal := reflect.New(resultType)
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, sqlArgs)
-	err = gd.DB().Get(resultVal.Interface(), sql, sqlArgs...)
-	if err != nil {
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, sqlArgs)
+	if tx != nil {
+		err = tx.Get(resultVal.Interface(), sqlQuery, sqlArgs...)
+	} else {
+		err = gd.DB().Get(resultVal.Interface(), sqlQuery, sqlArgs...)
+	}
+	if err != nil{
+		if !force && err == sql.ErrNoRows{
+			return nil, nil
+		}
 		return nil, err
 	}
 	return resultVal.Interface(), nil
+
 }
 
 func (gd *GenericDao) Select(intf interface{}) (interface{}, error) {
@@ -324,6 +337,19 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 			if strings.TrimSpace(currentEntity) == `` || strings.TrimSpace(currentTableField) == `` {
 				return nil, nil, errors.New(`can't find field mapping for the entity and the field ` + currentEntity + ` , ` + currentTableField)
 			}
+
+			if currentOperator == `in` {
+				queryVal := reflect.ValueOf(currentValue)
+				if queryVal.Kind() == reflect.String {
+					currentValue = strings.Split(currentValue.(string), `,`)
+				}
+				inParams := util.InterfaceSlice(currentValue)
+				//if current value is string, then convert it to the string and split the string with comma
+				extraAnd = append(extraAnd, sq.Eq{currentTableField: inParams})
+				values = append(values, inParams...)
+				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
+			}
+
 			if currentOperator == `eq` || currentOperator == `=` {
 				extraAnd = append(extraAnd, sq.Eq{currentTableField: `?`})
 			} else if currentOperator == `gt` || currentOperator == `>` {
@@ -336,16 +362,7 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: `?`})
 			} else if currentOperator == `like` {
 				extraAnd = append(extraAnd, sq.Like{currentTableField: `?`})
-			} else if currentOperator == `in` {
-				queryVal := reflect.ValueOf(currentValue)
-				if queryVal.Kind() == reflect.String {
-					currentValue = strings.Split(currentValue.(string), `,`)
-				}
-				inParams := util.InterfaceSlice(currentValue)
-				//if current value is string, then convert it to the string and split the string with comma
-				extraAnd = append(extraAnd, sq.Eq{currentTableField: inParams})
-				values = append(values, inParams...)
-				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
+				currentValue = `%` + fmt.Sprint(currentValue) + `%`
 			} else {
 				return nil, nil, errors.New(`unrecognised operator: ` + currentOperator)
 			}
