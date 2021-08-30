@@ -5,12 +5,22 @@ import (
 	"errors"
 	"fmt"
 	sq "github.com/Masterminds/squirrel"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/util"
 	"go.uber.org/zap"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"strings"
+	"time"
+)
+type Operation string
+
+const(
+	Insert Operation = `insert`
+	Update Operation = `update`
+	Delete Operation = `delete`
+	Select Operation = `select`
 )
 
 type CommonFields struct {
@@ -79,7 +89,8 @@ func NewGenericDao(db *sqlx.DB) *GenericDao {
 	if db == nil {
 		panic(`the pointer of database is nil`)
 	}
-	if db.Ping() != nil {
+	if err := db.Ping(); err != nil {
+		fmt.Println(err)
 		panic(`can't connect to the database`)
 	}
 	return &GenericDao{db: db}
@@ -194,6 +205,7 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 			autoFill = true
 		}
 	}
+	zap.L().Debug(fmt.Sprint(fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill}))
 	return &fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill}
 }
 
@@ -290,7 +302,7 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values  := gd.getValidColumnVal(intf)
+	fields, values  := gd.getValidColumnVal(intf, Select, extraQuery)
 
 	var and sq.And
 	var sqlArgs []interface{}
@@ -335,7 +347,7 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				}
 			}
 			if strings.TrimSpace(currentEntity) == `` || strings.TrimSpace(currentTableField) == `` {
-				return nil, nil, errors.New(`can't find field mapping for the entity and the field ` + currentEntity + ` , ` + currentTableField)
+				return nil, nil, errors.New(fmt.Sprintf(`can't find field mapping for the entity '%v' and the field '%v'`, currentEntity, currentJSONFields))
 			}
 
 			if currentOperator == `in` {
@@ -393,7 +405,7 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	}
 
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values := gd.getValidColumnVal(intf)
+	fields, values := gd.getValidColumnVal(intf, Update, extraQueryWrapper)
 	setMap := sq.Eq{}
 	var args  []interface{}
 	for i := 0; i < len(fields); i++ {
@@ -456,31 +468,18 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 		return nil, errors.New(`can't find the configuration for the type of ` + reflect.TypeOf(interf).Name())
 	}
 
-	fields, values  := gd.getValidColumnVal(interf)
+	fields, values  := gd.getValidColumnVal(interf, Insert, extraQueryWrapper)
 	var columns []string
-	var args []interface{}
-	for i := 0; i < len(fields); i++ {
-		if !fields[i].AutoFilled {
-			columns = append(columns, fields[i].TableField)
-			args = append(args, values[i])
-		}
-		if fields[i].IsPrimaryKey {
-			return nil, errors.New(`can't set value for the identifier field`)
-		}
+	for _, item := range fields {
+		columns = append(columns, item.TableField)
 	}
-
-	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		columns = append(columns, FixedColumnCreateBy)
-		args = append(args, extraQueryWrapper.CurrentUsername)
-	}
-
-	sqlQuery, sqlArgs, err := sq.Insert(table).Columns(columns...).Values(args...).ToSql()
+	sqlQuery, sqlArgs, err := sq.Insert(table).Columns(columns...).Values(values...).ToSql()
 	if err != nil {
 		panic(err)
 	}
 	var result sql.Result
 	var stmt *sqlx.Stmt
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
+	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, values)
 	if tx != nil {
 		stmt, err = tx.Preparex(sqlQuery)
 	} else {
@@ -497,24 +496,33 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	if affectedRow, err := result.RowsAffected(); err != nil || affectedRow <= 0 {
 		panic(`no row affected`)
 	}
-	//get the result from db then
+
 	if insertedId, err := result.LastInsertId(); err == nil {
-		newInterface := util.CreateObjFromInterface(interf)
-
-		if tx != nil {
-			//TODO: prepare statement
-			err = tx.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
-		} else {
-			err = gd.db.Get(newInterface.Interface(), `select * from `+table+` where id = ?`, insertedId)
-		}
-
-		if err != nil {
-			return nil, err
-		} else {
-			return newInterface.Interface(), err
+		if _, ok := reflect.TypeOf(interf).FieldByName(`Id`); ok {
+			result := reflect.New(reflect.TypeOf(interf))
+			result.Elem().Set(reflect.ValueOf(interf))
+			result.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(insertedId)))
+			return result, nil
 		}
 	}
-	return nil, err
+	//get the result from db then TODO: if we need to remote the query the result for it
+	//if insertedId, err := result.LastInsertId(); err == nil {
+	//	newInterface := util.CreateObjFromInterface(interf)
+	//
+	//	if tx != nil {
+	//		//TODO: prepare statement
+	//		err = tx.Get(newInterface.Interface(), `select * from ` + table +` where id = ?`, insertedId)
+	//	} else {
+	//		err = gd.db.Get(newInterface.Interface(), `select * from ` + table + ` where id = ?`, insertedId)
+	//	}
+	//
+	//	if err != nil {
+	//		return nil, err
+	//	} else {
+	//		return newInterface.Interface(), err
+	//	}
+	//}
+	return interf, err
 }
 
 // logical delete
@@ -534,7 +542,8 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values  := gd.getValidColumnVal(intf)
+	fields, values  := gd.getValidColumnVal(intf, Delete, extraQueryWrapper)
+	zap.L().Sugar().Debugf(`the result is %s, %s`, fmt.Sprint(fields), fmt.Sprint(values))
 	var args []interface{}
 	for i := 0; i < len(fields); i++ {
 		if fields[i].IsPrimaryKey {
@@ -571,7 +580,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	return err
 }
 
-func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]fieldInfo, []interface{}) {
+func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, extraQueryWrapper *ExtraQueryWrapper) ([]fieldInfo, []interface{}) {
 	var columns []fieldInfo
 	var values []interface{}
 	var crtActualVal interface{}
@@ -587,7 +596,7 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]fieldInfo, []interf
 
 		if gd.containCustomType(crtField.Type) {
 			crtVal := crtVal.Interface()
-			customColumns, customValues := gd.getValidColumnVal(crtVal)
+			customColumns, customValues := gd.getValidColumnVal(crtVal, operation, extraQueryWrapper)
 			columns = append(columns, customColumns...)
 			values = append(values, customValues...)
 			//gd.getValidColumnVal()
@@ -599,28 +608,53 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}) ([]fieldInfo, []interf
 		if !ok {
 			panic(`can't find the config for the type of ` + typeName + ` field:` + currentField)
 		}
-		switch crtField.Type.String() {
-		case `null.Int`:
+		if fConfig.AutoFilled {
+			//TODO: set the value at this place for the insert, update and delete operation
+			if operation == Insert {
+				if strings.ToLower(fConfig.Field) == `createby` || strings.ToLower(fConfig.TableField) == `create_by` {
+					columns = append(columns, *fConfig)
+					values = append(values, extraQueryWrapper.CurrentUsername)
+				}
+				if strings.ToLower(fConfig.Field) == `createtime` || strings.ToLower(fConfig.TableField) == `create_time` {
+					fmt.Println(`create_time`)
+					columns = append(columns, *fConfig)
+					values = append(values, null.TimeFrom(time.Now()))
+				}
+			}
+			if operation == Delete || operation == Update {
+				if strings.ToLower(fConfig.Field) == `updateby` || strings.ToLower(fConfig.TableField) == `update_by` {
+					columns = append(columns, *fConfig)
+					values = append(values, extraQueryWrapper.CurrentUsername)
+				}
+				if strings.ToLower(fConfig.Field) == `updatetime` || strings.ToLower(fConfig.TableField) == `update_time` {
+					columns = append(columns, *fConfig)
+					values = append(values, null.TimeFrom(time.Now()))
+				}
+			}
+			continue
+		}
+		switch crtField.Type {
+		case reflect.TypeOf(null.Int{}):
 			strVal := crtVal.Interface().(null.Int)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Int64
-		case `null.String`:
+		case reflect.TypeOf(null.String{}):
 			strVal := crtVal.Interface().(null.String)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.String
-		case `null.Float`:
+		case reflect.TypeOf(null.Float{}):
 			strVal := crtVal.Interface().(null.Float)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Float64
-		case `null.Time`:
+		case reflect.TypeOf(null.Time{}):
 			strVal := crtVal.Interface().(null.Time)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Time
-		case `null.Bool`:
+		case reflect.TypeOf(null.Bool{}):
 			strVal := crtVal.Interface().(null.Bool)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Bool
-		case `util.MyNullTime`:
+		case reflect.TypeOf(util.MyNullTime{}):
 			strVal := crtVal.Interface().(util.MyNullTime)
 			fieldHasValue = strVal.Valid
 			crtActualVal = strVal.Time
