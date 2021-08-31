@@ -153,6 +153,9 @@ func (gd *GenericDao) GetEntityTableMapping() map[string]string {
 
 func (gd *GenericDao) Bind(interf interface{}, table string) {
 	crtIrf := reflect.TypeOf(interf)
+	if crtIrf.Kind() != reflect.Struct {
+		panic(`only struct is ok`)
+	}
 	if gd.entityTableMapping == nil {
 		gd.entityTableMapping = make(map[string]string)
 	}
@@ -227,22 +230,8 @@ func (gd *GenericDao) GetOneWithTx (intf interface{}, extraQuery *ExtraQueryWrap
 	if err != nil {
 		return nil, err
 	}
-	resultType := reflect.TypeOf(intf)
-	resultVal := reflect.New(resultType)
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, sqlArgs)
-	if tx != nil {
-		err = tx.Get(resultVal.Interface(), sqlQuery, sqlArgs...)
-	} else {
-		err = gd.DB().Get(resultVal.Interface(), sqlQuery, sqlArgs...)
-	}
-	if err != nil{
-		if !force && err == sql.ErrNoRows{
-			return nil, nil
-		}
-		return nil, err
-	}
-	return resultVal.Interface(), nil
-
+	daoExecutor := daoExecutor{gd.db, tx}
+	return daoExecutor.get(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
 func (gd *GenericDao) Select(intf interface{}) (interface{}, error) {
@@ -264,37 +253,22 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if table == `` || strings.TrimSpace(table) == `` {
 		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
 	}
-
+	executor := daoExecutor{DB: gd.db, Tx: tx}
 	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
 	countSql, _, err := sq.Select("count(*)").FromSelect(sqlBuilder, `t`).ToSql()
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
 	}
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", countSql, sqlArgs)
-	if tx != nil {
-		err = tx.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
+	if total, err := executor.get(countSql, sqlArgs, reflect.TypeOf((*uint64)(nil)).Elem()); err != nil {
+		return nil, err
 	} else {
-		err = gd.db.Get(&extraQuery.Pagination.Total, countSql, sqlArgs...)
+		extraQuery.Pagination.Total = *total.(*uint64)
 	}
+	sqlQuery, _, err := sqlBuilder.Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
 	if err != nil {
 		return nil, err
 	}
-	mySql, _, err := sqlBuilder.Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).Limit(extraQuery.Pagination.PageSize).ToSql()
-	if err != nil {
-		return nil, err
-	}
-	result := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(intf)), 0, 10)
-	x := reflect.New(result.Type())
-	x.Elem().Set(result)
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", mySql, sqlArgs)
-	if tx != nil {
-		tx = tx.Unsafe()
-		err = tx.Select(x.Interface(), mySql, sqlArgs...)
-	} else {
-		db := gd.db.Unsafe()
-		err = db.Select(x.Interface(), mySql, sqlArgs...)
-	}
-	return x.Interface(), err
+	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
 func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.SelectBuilder, []interface{}) {
@@ -310,8 +284,6 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		and = append(and, sq.Eq{fields[i].TableField: `?`})
 		sqlArgs = append(sqlArgs, values[i])
 	}
-	and = append(and, sq.Eq{`del`: `?`})
-	sqlArgs = append(sqlArgs, 0)
 	extraAnd, extraQueryParams, err := gd.addExtraQueryToAnd(intf, extraQuery)
 	if err != nil {
 		panic(err)
@@ -428,24 +400,11 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	}
 	args = append(args, 0)
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where("id = ? and del = ?", args...).ToSql()
-	//zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, sqlArgs)
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
-	if err != nil {
-		return nil, errors.New(`can't generate sql from builder`)
-	}
-	var result sql.Result
-	var stmt *sqlx.Stmt
-	if tx != nil {
-		stmt, err = tx.Preparex(sqlQuery)
-	} else {
-		stmt, err = gd.db.Preparex(sqlQuery)
-	}
 	if err != nil {
 		return nil, err
 	}
-	result, err = stmt.Exec(args...)
-	return result, err
-
+	executor := daoExecutor{DB: gd.db, Tx: tx}
+	return executor.insertOrUpdate(sqlQuery, args)
 }
 
 func (gd *GenericDao) Insert(interf interface{}) (interface{}, error) {
@@ -475,34 +434,24 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	}
 	sqlQuery, sqlArgs, err := sq.Insert(table).Columns(columns...).Values(values...).ToSql()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	var result sql.Result
-	var stmt *sqlx.Stmt
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, values)
-	if tx != nil {
-		stmt, err = tx.Preparex(sqlQuery)
-	} else {
-		stmt, err = gd.db.Preparex(sqlQuery)
-	}
+	executor := daoExecutor{DB: gd.db, Tx: tx}
+	result, err := executor.insertOrUpdate(sqlQuery, sqlArgs)
+
 	if err != nil {
 		return nil, err
 	}
-	result, err = stmt.Exec(sqlArgs...)
-
-	if err != nil {
-		panic(err)
-	}
 	if affectedRow, err := result.RowsAffected(); err != nil || affectedRow <= 0 {
-		panic(`no row affected`)
+		return nil, errors.New(`no row affected`)
 	}
 
 	if insertedId, err := result.LastInsertId(); err == nil {
 		if _, ok := reflect.TypeOf(interf).FieldByName(`Id`); ok {
 			result := reflect.New(reflect.TypeOf(interf))
 			result.Elem().Set(reflect.ValueOf(interf))
-			result.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(insertedId)))
-			return result, nil
+			err := util.SetFieldValByName(result.Interface(), `Id`, null.IntFrom(insertedId))
+			return result, err
 		}
 	}
 	//get the result from db then TODO: if we need to remote the query the result for it
@@ -554,36 +503,21 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 		panic(`no identifier found`)
 	}
 	updateBuilder := sq.Update(table).Set(`del`, 1)
-	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		updateBuilder.Set(FixedColumnUpdateBy, extraQueryWrapper.CurrentUsername)
-	}
-	var result sql.Result
+
 	sql, queryArgs, err := updateBuilder.Where(`id = ?`, args...).ToSql()
 
 	if err != nil {
 		return errors.New(`some thing wrong when generating the sql`)
 	}
-	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sql, args)
-	if tx != nil {
-		result, err = tx.Exec(sql, queryArgs...)
-	} else {
-		result, err = gd.db.Exec(sql, queryArgs...)
-	}
-
-	if err != nil {
-		return err
-	}
-	affectedRow, err := result.RowsAffected()
-	if affectedRow <= 0 {
-		panic(`operation failed`)
-	}
+	executor := daoExecutor{DB: gd.db, Tx: tx}
+	_, err = executor.insertOrUpdate(sql, queryArgs)
 	return err
 }
 
 func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, extraQueryWrapper *ExtraQueryWrapper) ([]fieldInfo, []interface{}) {
 	var columns []fieldInfo
 	var values []interface{}
-	var crtActualVal interface{}
+	//var crtActualVal interface{}
 	fieldCount := reflect.TypeOf(intf).NumField()
 	typeName := reflect.TypeOf(intf).Name()
 	fieldsConfig, ok := gd.entityFieldMapping[typeName]
@@ -593,7 +527,12 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, e
 	for i := 0; i < fieldCount; i++ {
 		crtField := reflect.TypeOf(intf).Field(i)
 		crtVal := reflect.ValueOf(intf).Field(i)
-
+		fmt.Println(`>>>>>>>>>>>>>>>>>>>>>>>>`)
+		fmt.Println(crtVal)
+		//fmt.Println(`is null:`, crtVal.IsNil())
+		fmt.Println(`is zero:`, crtVal.IsZero())
+		fmt.Println(`is valid:`, crtVal.IsValid())
+		fmt.Println(`>>>>>>>>>>>>>>>>>>>>>>>>`)
 		if gd.containCustomType(crtField.Type) {
 			crtVal := crtVal.Interface()
 			customColumns, customValues := gd.getValidColumnVal(crtVal, operation, extraQueryWrapper)
@@ -602,7 +541,6 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, e
 			//gd.getValidColumnVal()
 			continue
 		}
-		fieldHasValue := false
 		currentField := crtField.Name
 		fConfig, ok := fieldsConfig[currentField]
 		if !ok {
@@ -630,40 +568,23 @@ func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, e
 					columns = append(columns, *fConfig)
 					values = append(values, null.TimeFrom(time.Now()))
 				}
+				if strings.ToLower(fConfig.Field)  == `del` ||  strings.ToLower(fConfig.TableField) == `del` {
+					columns = append(columns, *fConfig)
+					values = append(values, null.BoolFrom(true))
+				}
+			}
+			if operation == Select || operation == Delete {
+				if strings.ToLower(fConfig.Field) == `del` || strings.ToLower(fConfig.TableField) == `del` {
+					columns = append(columns, *fConfig)
+					values = append(values, 0)
+				}
 			}
 			continue
-		}
-		switch crtField.Type {
-		case reflect.TypeOf(null.Int{}):
-			strVal := crtVal.Interface().(null.Int)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.Int64
-		case reflect.TypeOf(null.String{}):
-			strVal := crtVal.Interface().(null.String)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.String
-		case reflect.TypeOf(null.Float{}):
-			strVal := crtVal.Interface().(null.Float)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.Float64
-		case reflect.TypeOf(null.Time{}):
-			strVal := crtVal.Interface().(null.Time)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.Time
-		case reflect.TypeOf(null.Bool{}):
-			strVal := crtVal.Interface().(null.Bool)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.Bool
-		case reflect.TypeOf(util.MyNullTime{}):
-			strVal := crtVal.Interface().(util.MyNullTime)
-			fieldHasValue = strVal.Valid
-			crtActualVal = strVal.Time
-		default:
-			zap.L().Info(`can't find the configuration`)
-		}
-		if fieldHasValue {
-			columns = append(columns, *fConfig)
-			values = append(values, crtActualVal)
+		} else {
+			if !crtVal.IsZero() {
+				columns = append(columns, *fConfig)
+				values = append(values, crtVal.Interface())
+			}
 		}
 	}
 	return columns, values

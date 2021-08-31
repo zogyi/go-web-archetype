@@ -2,6 +2,7 @@ package util
 
 import (
 	"errors"
+	"fmt"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"regexp"
@@ -115,4 +116,26 @@ func StringInSlice(a string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func SetFieldValByName (obj interface{}, field string, val interface{}) error {
+	if obj == nil {
+		return errors.New(`object is null`)
+	}
+	objType := reflect.ValueOf(obj)
+	if objType.Kind() != reflect.Ptr {
+		return fmt.Errorf("not ptr; is %T", objType)
+	}
+	objStruct := objType.Elem()
+	if objStruct.Kind() != reflect.Struct {
+		return fmt.Errorf("not struct; is %T", objStruct)
+	}
+	objField := objStruct.FieldByName(field)
+	if objField.CanSet() && objField.Kind() == reflect.ValueOf(val).Kind() {
+		objField.Set(reflect.ValueOf(val))
+		return nil
+	} else {
+		return fmt.Errorf(`filed can't be set or the val type is invalid %T, %T`, objField.CanSet(), reflect.ValueOf(val).Kind())
+	}
+
 }
