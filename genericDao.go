@@ -48,7 +48,6 @@ type ExtraQueryWrapper struct {
 	CurrentUsername string
 	Pagination      *util.Pagination
 	Query           *QueryWrapper
-	NullFields      []string
 }
 
 func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper {
@@ -177,7 +176,6 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 			}
 		} else {
 			fieldsMapping[currentField.Name] = getFieldInfo(currentField)
-
 		}
 	}
 	gd.entityFieldMapping[crtIrf.Name()] = fieldsMapping
@@ -206,6 +204,9 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 		}
 		if util.StringInSlice(TagAutoFilled, sqlItems) {
 			autoFill = true
+		}
+		if !isPrimaryKey && !autoFill {
+			panic(fmt.Sprintf(`unrecognized tag value: <%s>, the right format looks like this: "%s:%s,%s"`, sqlTag, TagArchType, TagPrimaryKey, TagAutoFilled))
 		}
 	}
 	zap.L().Debug(fmt.Sprint(fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill}))
@@ -253,8 +254,10 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	if table == `` || strings.TrimSpace(table) == `` {
 		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
 	}
+
 	executor := daoExecutor{DB: gd.db, Tx: tx}
-	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(intf, extraQuery)
+	returnResult := gd.Validate(intf, Insert, extraQuery.CurrentUsername)
+	sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(returnResult, extraQuery)
 	countSql, _, err := sq.Select("count(*)").FromSelect(sqlBuilder, `t`).ToSql()
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
@@ -276,7 +279,8 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values  := gd.getValidColumnVal(intf, Select, extraQuery)
+	returnResult := gd.Validate(intf, Select, extraQuery.CurrentUsername)
+	fields, values  := gd.getValidColumnVal(returnResult, Select, extraQuery)
 
 	var and sq.And
 	var sqlArgs []interface{}
@@ -371,13 +375,13 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	if extraQueryWrapper == nil {
 		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
-
 	if reflect.TypeOf(intf).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
-
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values := gd.getValidColumnVal(intf, Update, extraQueryWrapper)
+
+	returnResult := gd.Validate(intf, Update, extraQueryWrapper.CurrentUsername)
+	fields, values := gd.getValidColumnVal(returnResult, Update, extraQueryWrapper)
 	setMap := sq.Eq{}
 	var args  []interface{}
 	for i := 0; i < len(fields); i++ {
@@ -387,16 +391,6 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 		if fields[i].IsPrimaryKey {
 			args = append(args, values[i])
 		}
-	}
-
-	for i := 0; i < len(extraQueryWrapper.NullFields); i++ {
-		setMap[extraQueryWrapper.NullFields[i]] = null.Int{}
-	}
-	if extraQueryWrapper != nil && extraQueryWrapper.CurrentUsername != `` {
-		setMap[FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
-	}
-	if len(args) < 1 {
-		panic(`no identifier found`)
 	}
 	args = append(args, 0)
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where("id = ? and del = ?", args...).ToSql()
@@ -426,8 +420,8 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	if !ok {
 		return nil, errors.New(`can't find the configuration for the type of ` + reflect.TypeOf(interf).Name())
 	}
-
-	fields, values  := gd.getValidColumnVal(interf, Insert, extraQueryWrapper)
+	returnResult := gd.Validate(interf, Insert, extraQueryWrapper.CurrentUsername)
+	fields, values  := gd.getValidColumnVal(returnResult, Insert, extraQueryWrapper)
 	var columns []string
 	for _, item := range fields {
 		columns = append(columns, item.TableField)
@@ -454,23 +448,6 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 			return result, err
 		}
 	}
-	//get the result from db then TODO: if we need to remote the query the result for it
-	//if insertedId, err := result.LastInsertId(); err == nil {
-	//	newInterface := util.CreateObjFromInterface(interf)
-	//
-	//	if tx != nil {
-	//		//TODO: prepare statement
-	//		err = tx.Get(newInterface.Interface(), `select * from ` + table +` where id = ?`, insertedId)
-	//	} else {
-	//		err = gd.db.Get(newInterface.Interface(), `select * from ` + table + ` where id = ?`, insertedId)
-	//	}
-	//
-	//	if err != nil {
-	//		return nil, err
-	//	} else {
-	//		return newInterface.Interface(), err
-	//	}
-	//}
 	return interf, err
 }
 
@@ -491,101 +468,131 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	fields, values  := gd.getValidColumnVal(intf, Delete, extraQueryWrapper)
-	zap.L().Sugar().Debugf(`the result is %s, %s`, fmt.Sprint(fields), fmt.Sprint(values))
-	var args []interface{}
-	for i := 0; i < len(fields); i++ {
-		if fields[i].IsPrimaryKey {
-			args = append(args, values[i])
-		}
-	}
-	if len(args) < 1 {
-		panic(`no identifier found`)
-	}
-	updateBuilder := sq.Update(table).Set(`del`, 1)
 
-	sql, queryArgs, err := updateBuilder.Where(`id = ?`, args...).ToSql()
+	returnResult := gd.Validate(intf, Delete, extraQueryWrapper.CurrentUsername)
+	fields, values  := gd.getValidColumnVal(returnResult, Delete, extraQueryWrapper)
+	zap.L().Sugar().Debugf(`the result is %s, %s`, fmt.Sprint(fields), fmt.Sprint(values))
+	queryEq := sq.Eq{}
+	for _, fieldItem := range fields {
+		queryEq[fieldItem.TableField] = `?`
+	}
+	whereSql, _, err := queryEq.ToSql()
+	if err != nil {
+		return err
+	}
+	values = append(values, 1)
+
+	sqlQuery, _, err := sq.Update(table).Where(whereSql, values...).Set(`del`, `?`).Set(`create_by`, `?`).ToSql()
+	//sqlQuery, queryArgs, err := updateBuilder.Where(whereSql, values...).ToSql()
 
 	if err != nil {
 		return errors.New(`some thing wrong when generating the sql`)
 	}
 	executor := daoExecutor{DB: gd.db, Tx: tx}
-	_, err = executor.insertOrUpdate(sql, queryArgs)
+	var sqlResult sql.Result
+	var rows int64
+	if sqlResult, err = executor.insertOrUpdate(sqlQuery, values); err == nil {
+		if rows, err = sqlResult.RowsAffected(); err == nil && rows <= 0 {
+			return errors.New(`no rows effected`)
+		}
+	}
 	return err
+}
+
+func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUser string) interface{} {
+	intfType := reflect.TypeOf(intf)
+	intfVal := reflect.ValueOf(intf)
+	//whereClause := sq.Eq{}
+	//setClause := make(map[string]interface)
+	var returnIntf reflect.Value
+	if intfType.Kind() == reflect.Struct {
+		returnIntf = reflect.New(intfType)
+		returnIntf.Elem().Set(intfVal)
+	}
+	var fieldsConfiguration map[string]*fieldInfo
+	var ok bool
+	if fieldsConfiguration, ok = gd.entityFieldMapping[intfType.Name()]; !ok {
+		panic(`can't find the fields configuration for the struct ` + intfType.Name())
+	}
+	if strings.TrimSpace(executeUser) == `` {
+		executeUser = `system`
+	}
+	for i := 0; i < intfType.NumField(); i++ {
+		var filedCfg *fieldInfo
+		crtFiledType := intfType.Field(i)
+		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
+		if gd.containCustomType(crtFiledType.Type) {
+			gd.Validate(crtFiledVal, operation, executeUser)
+		}
+		if filedCfg, ok = fieldsConfiguration[crtFiledType.Name]; !ok {
+			panic(fmt.Sprintf(`can't find the configuration for the struct %s of field %s`, intfType.Name(), crtFiledType.Name))
+		}
+		if filedCfg.AutoFilled {
+			if (strings.ToLower(filedCfg.TableField) == `update_by` && (operation == Delete || operation == Update)) ||
+				(strings.ToLower(filedCfg.TableField) == `create_by` && operation == Insert) {
+				crtFiledVal.Set(reflect.ValueOf(null.StringFrom(executeUser)))
+			}
+			if (strings.ToLower(filedCfg.TableField) == `update_time` && (operation == Delete || operation == Update)) ||
+				(strings.ToLower(filedCfg.TableField) == `create_time` && operation == Insert){
+				crtFiledVal.Set(reflect.ValueOf(util.MyNullTime{Time: null.TimeFrom(time.Now())}))
+			}
+			if strings.ToLower(filedCfg.TableField) == `del` {
+				crtFiledVal.Set(reflect.ValueOf(null.BoolFrom(false)))
+			}
+			if filedCfg.IsPrimaryKey {
+				if operation == Insert && !crtFiledVal.IsZero() {
+					//remove the value for this field
+					panic(fmt.Sprintf(`the primary key shouldn't have a value when execute the delete and update method, the primary key is %s and the value is %s`, crtFiledVal.Type().Name(), fmt.Sprint(crtFiledVal)))
+				}
+				if (operation == Delete || operation == Update) && crtFiledVal.IsZero(){
+					panic(fmt.Sprintf(`the primary key should have a value when execute the delete and update method, the primary key is %s and the value is %s`, crtFiledVal.Type().Name(), fmt.Sprint(crtFiledVal)))
+				}
+			}
+		}
+	}
+	return returnIntf.Interface()
 }
 
 func (gd *GenericDao) getValidColumnVal(intf interface{}, operation Operation, extraQueryWrapper *ExtraQueryWrapper) ([]fieldInfo, []interface{}) {
 	var columns []fieldInfo
 	var values []interface{}
 	//var crtActualVal interface{}
-	fieldCount := reflect.TypeOf(intf).NumField()
-	typeName := reflect.TypeOf(intf).Name()
+	var interfType reflect.Type
+	var interfVal reflect.Value
+	if reflect.ValueOf(intf).Kind() == reflect.Ptr || reflect.ValueOf(intf).Kind() == reflect.Interface  {
+		interfVal = reflect.ValueOf(intf).Elem()
+		interfType = interfVal.Type()
+	} else {
+		interfType = reflect.TypeOf(intf)
+		interfVal = reflect.ValueOf(interfVal)
+	}
+	fieldCount := interfType.NumField()
+	typeName := interfType.Name()
 	fieldsConfig, ok := gd.entityFieldMapping[typeName]
 	if !ok {
 		panic(`can't find the config for the type of ` + typeName)
 	}
 	for i := 0; i < fieldCount; i++ {
-		crtField := reflect.TypeOf(intf).Field(i)
-		crtVal := reflect.ValueOf(intf).Field(i)
-		fmt.Println(`>>>>>>>>>>>>>>>>>>>>>>>>`)
-		fmt.Println(crtVal)
-		//fmt.Println(`is null:`, crtVal.IsNil())
-		fmt.Println(`is zero:`, crtVal.IsZero())
-		fmt.Println(`is valid:`, crtVal.IsValid())
-		fmt.Println(`>>>>>>>>>>>>>>>>>>>>>>>>`)
+		crtField := interfType.Field(i)
+		crtVal := interfVal.FieldByName(crtField.Name)
 		if gd.containCustomType(crtField.Type) {
 			crtVal := crtVal.Interface()
 			customColumns, customValues := gd.getValidColumnVal(crtVal, operation, extraQueryWrapper)
 			columns = append(columns, customColumns...)
 			values = append(values, customValues...)
-			//gd.getValidColumnVal()
 			continue
 		}
-		currentField := crtField.Name
-		fConfig, ok := fieldsConfig[currentField]
+		fConfig, ok := fieldsConfig[crtField.Name]
 		if !ok {
-			panic(`can't find the config for the type of ` + typeName + ` field:` + currentField)
+			panic(`can't find the config for the type of ` + typeName + ` field:` + crtField.Name)
 		}
-		if fConfig.AutoFilled {
-			//TODO: set the value at this place for the insert, update and delete operation
-			if operation == Insert {
-				if strings.ToLower(fConfig.Field) == `createby` || strings.ToLower(fConfig.TableField) == `create_by` {
-					columns = append(columns, *fConfig)
-					values = append(values, extraQueryWrapper.CurrentUsername)
-				}
-				if strings.ToLower(fConfig.Field) == `createtime` || strings.ToLower(fConfig.TableField) == `create_time` {
-					fmt.Println(`create_time`)
-					columns = append(columns, *fConfig)
-					values = append(values, null.TimeFrom(time.Now()))
-				}
-			}
-			if operation == Delete || operation == Update {
-				if strings.ToLower(fConfig.Field) == `updateby` || strings.ToLower(fConfig.TableField) == `update_by` {
-					columns = append(columns, *fConfig)
-					values = append(values, extraQueryWrapper.CurrentUsername)
-				}
-				if strings.ToLower(fConfig.Field) == `updatetime` || strings.ToLower(fConfig.TableField) == `update_time` {
-					columns = append(columns, *fConfig)
-					values = append(values, null.TimeFrom(time.Now()))
-				}
-				if strings.ToLower(fConfig.Field)  == `del` ||  strings.ToLower(fConfig.TableField) == `del` {
-					columns = append(columns, *fConfig)
-					values = append(values, null.BoolFrom(true))
-				}
-			}
-			if operation == Select || operation == Delete {
-				if strings.ToLower(fConfig.Field) == `del` || strings.ToLower(fConfig.TableField) == `del` {
-					columns = append(columns, *fConfig)
-					values = append(values, 0)
-				}
-			}
-			continue
-		} else {
-			if !crtVal.IsZero() {
-				columns = append(columns, *fConfig)
-				values = append(values, crtVal.Interface())
-			}
+		if !crtVal.IsZero() {
+			columns = append(columns, *fConfig)
+			values = append(values, crtVal.Interface())
 		}
+	}
+	if (operation == Delete || operation == Update) && (len(columns) <= 1 || len(values) <= 1) {
+		panic(`can't execute the update or delete operation, query condition can't be validate ` + fmt.Sprint(columns) + ` ` + fmt.Sprint(values))
 	}
 	return columns, values
 }
