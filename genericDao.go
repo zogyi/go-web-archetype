@@ -539,7 +539,7 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 			}
 		}
 	}
-	if (operation == Delete || operation == Update) && !primaryKeyValid {
+	if (operation == Delete || operation == Update) && !primaryKeyValid && !gd.containCustomType(intfType) {
 		panic(`unsupported query object, should have value for the primary key when execute the update or delete method`)
 	}
 	return eqClause, setMap
