@@ -56,7 +56,7 @@ func TestGenericDao_Insert(t *testing.T) {
 	item := TestStruct1{
 		Field2: null.StringFrom(`测试删除`),
 		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
-		Filed5: null.IntFrom(0),}
+		Filed5: null.IntFrom(0)}
 	 result, err := dao.SelectWithExtraQuery(item, queryWrapper)
 	fmt.Println(result)
 	//fmt.Println(result.RowsAffected())

@@ -491,7 +491,14 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
-			gd.Validate(crtFiledVal, operation, executeUser)
+			subEqClause, subSetMap := gd.Validate(crtFiledVal.Interface(), operation, executeUser)
+			for k, v := range subEqClause {
+				eqClause[k] = v
+			}
+			for k, v := range subSetMap {
+				setMap[k] = v
+			}
+			continue
 		}
 		if filedCfg, ok = fieldsConfiguration[crtFiledType.Name]; !ok {
 			panic(fmt.Sprintf(`can't find the configuration for the struct %s of field %s`, intfType.Name(), crtFiledType.Name))
