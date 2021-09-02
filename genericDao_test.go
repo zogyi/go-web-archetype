@@ -1,7 +1,6 @@
 package go_web_archetype
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/log"
@@ -27,7 +26,7 @@ type TestStruct1 struct {
 
 func initGenericDao() *GenericDao {
 	log.InitLog(``, `debug`)
-	db, err := sqlx.Open(`mysql`, `root:***REMOVED***@tcp(localhost:3306)/test?charset=utf8`)
+	db, err := sqlx.Open(`mysql`, `root:***REMOVED***@tcp(localhost:3306)/test?charset=utf8&parseTime=true`)
 	if err != nil {
 		fmt.Println(err)
 		panic(`can't open the database connection`)
@@ -55,13 +54,12 @@ func TestGenericDao_Insert(t *testing.T) {
 	dao := initGenericDao()
 	queryWrapper := NewDefaultExtraQueryWrapper()
 	item := TestStruct1{
-		Id: null.IntFrom(8565),
 		Field2: null.StringFrom(`测试删除`),
 		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
-		Filed5: null.IntFrom(0),
-		Del: null.BoolFrom(false)}
-	 err := dao.DeleteWithExtraQuery(item, queryWrapper)
-	//fmt.Println(result)
+		Filed5: null.IntFrom(0),}
+	 result, err := dao.SelectWithExtraQuery(item, queryWrapper)
+	fmt.Println(result)
+	//fmt.Println(result.RowsAffected())
 	fmt.Println(err)
 }
 
@@ -74,16 +72,9 @@ func TestGenericDao_Validate(t *testing.T) {
 		CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
 		Filed5: null.IntFrom(0),
 		Del: null.BoolFrom(false)}
-	result := dao.Validate(item, Delete, `david`)
-	byteResult, err := json.Marshal(result)
-	fmt.Println(result)
-	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println(string(byteResult))
-	}
-	fmt.Println(result)
-	fmt.Println(err)
+	eqCluase, setMap:= dao.Validate(item, Delete, `david`)
+	fmt.Println(eqCluase)
+	fmt.Println(setMap)
 }
 
 func BenchmarkGenericDao_TransferToSelectBuilder(b *testing.B) {
