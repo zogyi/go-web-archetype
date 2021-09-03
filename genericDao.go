@@ -22,6 +22,21 @@ const(
 	Delete Operation = `delete`
 	Select Operation = `select`
 )
+type QueryOperator string
+
+const (
+	QPEq     QueryOperator = `eq`
+	QPEqSmb  QueryOperator = `=`
+	QPGt     QueryOperator = `gt`
+	QPGtSmb  QueryOperator = `>`
+	QPLt     QueryOperator = `lt`
+	QPLtSmb  QueryOperator = `<`
+	QPGte    QueryOperator = `gte`
+	QPGteSmb QueryOperator = `>=`
+	QPLte    QueryOperator = `lte`
+	QPLteSmb QueryOperator = `<=`
+	QPLike   QueryOperator = `like`
+)
 
 type CommonFields struct {
 	Id         null.Int        `json:"id" archType:"primaryKey"`
@@ -34,9 +49,9 @@ type CommonFields struct {
 
 //TODO: 1. extract the field and columns mapping and save into a map
 type QueryItem struct {
-	Field    string      `json:"field"`
-	Operator string      `json:"operator"`
-	Value    interface{} `json:"value"`
+	Field    string        `json:"field"`
+	Operator QueryOperator `json:"operator"`
+	Value    interface{}   `json:"value"`
 }
 
 type QueryWrapper struct {
@@ -256,9 +271,8 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	}
 
 	executor := daoExecutor{DB: gd.db, Tx: tx}
-	eqClause, _ , _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
-	//sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(returnResult, extraQuery)
-	countSql, sqlArgs, err := sq.Select("count(*)").From(table).Where(eqClause).ToSql()
+	builder := gd.TransferToSelectBuilder(intf, extraQuery)
+	countSql, sqlArgs, err := sq.Select("count(*)").FromSelect(builder, `t1`).ToSql()
 	if err != nil {
 		return nil, errors.New(`error occurred when generating the count sql`)
 	}
@@ -267,7 +281,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	} else {
 		extraQuery.Pagination.Total = *total.(*uint64)
 	}
-	sqlQuery, _, err := sq.Select(`*`).From(table).Where(eqClause).
+	sqlQuery, sqlArgs, err := sq.Select(`*`).FromSelect(builder, `t1`).
 		Offset((extraQuery.Pagination.CurrentPage) * extraQuery.Pagination.PageSize).
 		Limit(extraQuery.Pagination.PageSize).ToSql()
 
@@ -277,7 +291,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
-func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.SelectBuilder) {
+func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) sq.SelectBuilder {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
@@ -306,7 +320,7 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 	if extraQuery != nil && extraQuery.Query != nil {
 		for i := 0; i < len(extraQuery.Query.And); i++ {
 			var currentValue interface{}
-			currentOperator := strings.ToLower(strings.TrimSpace(extraQuery.Query.And[i].Operator))
+			currentOperator := extraQuery.Query.And[i].Operator
 			currentJSONFields := strings.TrimSpace(extraQuery.Query.And[i].Field)
 			currentValue = extraQuery.Query.And[i].Value
 			var currentTableField string
@@ -332,21 +346,21 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
 			}
 
-			if currentOperator == `eq` || currentOperator == `=` {
+			if currentOperator == QPEq || currentOperator == QPEqSmb {
 				extraAnd = append(extraAnd, sq.Eq{currentTableField: currentValue})
-			} else if currentOperator == `gt` || currentOperator == `>` {
+			} else if currentOperator == QPGt || currentOperator == QPGtSmb {
 				extraAnd = append(extraAnd, sq.Gt{currentTableField: currentValue})
-			} else if currentOperator == `lt` || currentOperator == `<` {
+			} else if currentOperator == QPLt || currentOperator == QPGtSmb {
 				extraAnd = append(extraAnd, sq.Lt{currentTableField: currentValue})
-			} else if currentOperator == `gte` || currentOperator == `>=` {
+			} else if currentOperator == QPGte || currentOperator == QPGteSmb {
 				extraAnd = append(extraAnd, sq.GtOrEq{currentTableField: currentValue})
-			} else if currentOperator == `lte` || currentOperator == `>=` {
+			} else if currentOperator == QPLte || currentOperator == QPLteSmb {
 				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: currentValue})
-			} else if currentOperator == `like` {
+			} else if currentOperator == QPLike {
 				currentValue = `%` + fmt.Sprint(currentValue) + `%`
 				extraAnd = append(extraAnd, sq.Like{currentTableField: currentValue})
 			} else {
-				return nil, errors.New(`unrecognised operator: ` + currentOperator)
+				return nil, errors.New(fmt.Sprint(`unrecognised operator: `, currentOperator))
 			}
 		}
 	}
@@ -497,7 +511,7 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 			for k, v := range subSetMap {
 				setMap[k] = v
 			}
-			primaryKeyValid = subPrimaryKeyValid || subPrimaryKeyValid
+			primaryKeyValid = primaryKeyValid || subPrimaryKeyValid
 			continue
 		}
 		if filedCfg, ok = fieldsConfiguration[crtFiledType.Name]; !ok {
