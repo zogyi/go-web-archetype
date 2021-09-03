@@ -256,7 +256,7 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	}
 
 	executor := daoExecutor{DB: gd.db, Tx: tx}
-	eqClause, _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
+	eqClause, _ , _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
 	//sqlBuilder, sqlArgs := gd.TransferToSelectBuilder(returnResult, extraQuery)
 	countSql, sqlArgs, err := sq.Select("count(*)").From(table).Where(eqClause).ToSql()
 	if err != nil {
@@ -282,7 +282,7 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	eqClause, _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
+	eqClause, _ , _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
 
 	extraAnd, err := gd.addExtraQueryToAnd(intf, extraQuery)
 	if err != nil {
@@ -373,7 +373,7 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 
-	eqClause, setMap := gd.Validate(intf, Update, extraQueryWrapper.CurrentUsername)
+	eqClause, setMap, _ := gd.Validate(intf, Update, extraQueryWrapper.CurrentUsername)
 	//fields, values := gd.getValidColumnVal(returnResult, Update, extraQueryWrapper)
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
 	if err != nil {
@@ -402,7 +402,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 	if !ok {
 		return nil, errors.New(`can't find the configuration for the type of ` + reflect.TypeOf(interf).Name())
 	}
-	_, setMap := gd.Validate(interf, Insert, extraQueryWrapper.CurrentUsername)
+	_, setMap, _  := gd.Validate(interf, Insert, extraQueryWrapper.CurrentUsername)
 	sqlQuery, sqlArgs, err := sq.Insert(table).SetMap(setMap).ToSql()
 	if err != nil {
 		return nil, err
@@ -446,7 +446,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 
-	eqClause, setMap := gd.Validate(intf, Delete, extraQueryWrapper.CurrentUsername)
+	eqClause, setMap, _  := gd.Validate(intf, Delete, extraQueryWrapper.CurrentUsername)
 
 	sqlQuery, sqlArgs, err := sq.Update(table).Where(eqClause).SetMap(setMap).ToSql()
 	//sqlQuery, queryArgs, err := updateBuilder.Where(whereSql, values...).ToSql()
@@ -465,7 +465,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	return err
 }
 
-func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}) {
+func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
 	intfType := reflect.TypeOf(intf)
 	intfVal := reflect.ValueOf(intf)
 	//whereClause := sq.Eq{}
@@ -483,7 +483,6 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 	if strings.TrimSpace(executeUser) == `` {
 		executeUser = `system`
 	}
-	var primaryKeyValid = false
 	eqClause = make(sq.Eq)
 	setMap = make(map[string]interface{})
 	for i := 0; i < intfType.NumField(); i++ {
@@ -491,13 +490,14 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
-			subEqClause, subSetMap := gd.Validate(crtFiledVal.Interface(), operation, executeUser)
+			subEqClause, subSetMap, subPrimaryKeyValid := gd.Validate(crtFiledVal.Interface(), operation, executeUser)
 			for k, v := range subEqClause {
 				eqClause[k] = v
 			}
 			for k, v := range subSetMap {
 				setMap[k] = v
 			}
+			primaryKeyValid = subPrimaryKeyValid || subPrimaryKeyValid
 			continue
 		}
 		if filedCfg, ok = fieldsConfiguration[crtFiledType.Name]; !ok {
@@ -542,5 +542,5 @@ func (gd *GenericDao)Validate (intf interface{}, operation Operation, executeUse
 	if (operation == Delete || operation == Update) && !primaryKeyValid && !gd.containCustomType(intfType) {
 		panic(`unsupported query object, should have value for the primary key when execute the update or delete method`)
 	}
-	return eqClause, setMap
+	return eqClause, setMap, primaryKeyValid
 }

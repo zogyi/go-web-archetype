@@ -72,7 +72,7 @@ func TestGenericDao_Validate(t *testing.T) {
 		CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
 		Filed5: null.IntFrom(0),
 		Del: null.BoolFrom(false)}
-	eqCluase, setMap:= dao.Validate(item, Delete, `david`)
+	eqCluase, setMap , _ := dao.Validate(item, Delete, `david`)
 	fmt.Println(eqCluase)
 	fmt.Println(setMap)
 }
