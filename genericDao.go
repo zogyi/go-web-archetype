@@ -436,7 +436,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(interf interface{}, extraQueryWr
 			result := reflect.New(reflect.TypeOf(interf))
 			result.Elem().Set(reflect.ValueOf(interf))
 			err := util.SetFieldValByName(result.Interface(), `Id`, null.IntFrom(insertedId))
-			return result, err
+			return result.Interface(), err
 		}
 	}
 	return interf, err
