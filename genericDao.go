@@ -92,7 +92,7 @@ type GenericDao struct {
 	bondEntities       []interface{}                    //所有的entity
 	entityTableMapping map[string]string                //entity与table名字之间的映射
 	entityFieldMapping map[string]map[string]*fieldInfo //entity所有的表单的映射
-
+	tablePrimaryKey map[string]*fieldInfo				//table's primary key mapping
 	//自定义类型如下
 	customType             []interface{}                    //用户自定义的类型
 	//customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
@@ -185,17 +185,32 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 			if customTypeFields, ok := gd.entityFieldMapping[currentField.Name]; ok {
 				for k, v := range customTypeFields {
 					fieldsMapping[k] = v
+					gd.setPrimaryKeyMap(table, v)
 				}
 			} else {
 				panic(`can't found the required type`)
 			}
 		} else {
-			fieldsMapping[currentField.Name] = getFieldInfo(currentField)
+			fieldInfo := getFieldInfo(currentField)
+			fieldsMapping[currentField.Name] = fieldInfo
+			gd.setPrimaryKeyMap(table, fieldInfo)
 		}
 	}
 	gd.entityFieldMapping[crtIrf.Name()] = fieldsMapping
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
+
+func (gd *GenericDao) setPrimaryKeyMap(table string, crtFieldInfo *fieldInfo) {
+	if crtFieldInfo.IsPrimaryKey {
+		existingFieldInfo, ok := gd.tablePrimaryKey[table]
+		if ok && *crtFieldInfo != *existingFieldInfo{
+			panic(`can't set more than one primary key`)
+		}
+		if gd.tablePrimaryKey == nil {gd.tablePrimaryKey = make(map[string]*fieldInfo)}
+		gd.tablePrimaryKey[table] = crtFieldInfo
+	}
+}
+
 
 func getFieldInfo(field reflect.StructField) *fieldInfo {
 	dbTag := field.Tag.Get("db")
@@ -291,19 +306,23 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
-func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) sq.SelectBuilder {
+func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (selectBuilder sq.SelectBuilder) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
-	eqClause, _ , _ := gd.Validate(intf, Select, extraQuery.CurrentUsername)
-
-	extraAnd, err := gd.addExtraQueryToAnd(intf, extraQuery)
-	if err != nil {
-		panic(err)
+	eqClause, _ , hasPrimaryKey := gd.Validate(intf, Select, extraQuery.CurrentUsername)
+	if hasPrimaryKey {
+		eqClause = map[string]interface{}{gd.tablePrimaryKey[table].TableField : eqClause[gd.tablePrimaryKey[table].TableField]}
+		selectBuilder = sq.Select(`*`).From(table).Where(eqClause)
+	} else {
+		extraAnd, err := gd.addExtraQueryToAnd(intf, extraQuery)
+		if err != nil {
+			panic(err)
+		}
+		extraAnd = append(extraAnd, eqClause)
+		selectBuilder = sq.Select(`*`).From(table).Where(extraAnd)
 	}
-	extraAnd = append(extraAnd, eqClause)
-	selectBuilder := sq.Select(`*`).From(table).Where(extraAnd)
 	return selectBuilder
 }
 
@@ -387,8 +406,11 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(intf interface{}, extraQueryWra
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 
-	eqClause, setMap, _ := gd.Validate(intf, Update, extraQueryWrapper.CurrentUsername)
+	eqClause, setMap, hasPrimaryKey := gd.Validate(intf, Update, extraQueryWrapper.CurrentUsername)
 	//fields, values := gd.getValidColumnVal(returnResult, Update, extraQueryWrapper)
+	if hasPrimaryKey {
+		eqClause = map[string]interface{}{gd.tablePrimaryKey[table].TableField : eqClause[gd.tablePrimaryKey[table].TableField]}
+	}
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
 	if err != nil {
 		return nil, err
@@ -460,13 +482,15 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(intf interface{}, extraQueryWrap
 	}
 	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
 
-	eqClause, setMap, _  := gd.Validate(intf, Delete, extraQueryWrapper.CurrentUsername)
-
+	eqClause, setMap, hasPrimaryKey  := gd.Validate(intf, Delete, extraQueryWrapper.CurrentUsername)
+	if hasPrimaryKey {
+		eqClause = map[string]interface{}{gd.tablePrimaryKey[table].TableField : eqClause[gd.tablePrimaryKey[table].TableField]}
+	}
 	sqlQuery, sqlArgs, err := sq.Update(table).Where(eqClause).SetMap(setMap).ToSql()
 	//sqlQuery, queryArgs, err := updateBuilder.Where(whereSql, values...).ToSql()
 
 	if err != nil {
-		return errors.New(`some thing wrong when generating the sql`)
+		return errors.New(`some thing wrong when generating the sql ` + err.Error())
 	}
 	executor := daoExecutor{DB: gd.db, Tx: tx}
 	var sqlResult sql.Result
