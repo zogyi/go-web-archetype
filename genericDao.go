@@ -56,6 +56,7 @@ type QueryItem struct {
 
 type QueryWrapper struct {
 	And   []QueryItem       `json:"and"`
+	Or 	  []QueryItem 	    `json:"or"`
 	Group map[string]string `json:"group"`
 }
 
@@ -316,32 +317,48 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		eqClause = map[string]interface{}{gd.tablePrimaryKey[table].TableField : eqClause[gd.tablePrimaryKey[table].TableField]}
 		selectBuilder = sq.Select(`*`).From(table).Where(eqClause)
 	} else {
-		extraAnd, err := gd.addExtraQueryToAnd(intf, extraQuery)
+		var extraAnd sq.And
+		var extraOr sq.Or
+		var err error
+		extraAnd, err = gd.addExtraQuery(intf, extraQuery, true)
 		if err != nil {
 			panic(err)
 		}
 		extraAnd = append(extraAnd, eqClause)
+		extraOr, err = gd.addExtraQuery(intf, extraQuery, false)
+		if err != nil {
+			panic(err)
+		}
+		if (extraOr != nil) {
+			extraAnd = append(extraAnd, extraOr)
+		}
 		selectBuilder = sq.Select(`*`).From(table).Where(extraAnd)
 	}
 	return selectBuilder
 }
 
-func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQueryWrapper) (sq.And, error) {
+func (gd *GenericDao) addExtraQuery(intf interface{}, extraQuery *ExtraQueryWrapper, isAnd bool) ([]sq.Sqlizer, error) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
-	var extraAnd sq.And
+	var extraOperator []sq.Sqlizer
 	currentEntity := reflect.TypeOf(intf).Name()
 	currentFieldMapping := gd.entityFieldMapping[currentEntity]
 	for currentFieldMapping == nil || len(currentFieldMapping) == 0 {
 		return nil, errors.New(`can't find fields mapping for the entity ` + currentEntity)
 	}
 	if extraQuery != nil && extraQuery.Query != nil {
-		for i := 0; i < len(extraQuery.Query.And); i++ {
+		var queryItemArray []QueryItem
+		if isAnd {
+			queryItemArray = extraQuery.Query.And
+		} else {
+			queryItemArray = extraQuery.Query.Or
+		}
+		for i := 0; i < len(queryItemArray); i++ {
 			var currentValue interface{}
-			currentOperator := extraQuery.Query.And[i].Operator
-			currentJSONFields := strings.TrimSpace(extraQuery.Query.And[i].Field)
-			currentValue = extraQuery.Query.And[i].Value
+			currentOperator := queryItemArray[i].Operator
+			currentJSONFields := strings.TrimSpace(queryItemArray[i].Field)
+			currentValue = queryItemArray[i].Value
 			var currentTableField string
 			for _, fieldInfo := range currentFieldMapping {
 				if fieldInfo.JSONField == currentJSONFields {
@@ -360,30 +377,30 @@ func (gd *GenericDao) addExtraQueryToAnd(intf interface{}, extraQuery *ExtraQuer
 				}
 				inParams := util.InterfaceSlice(currentValue)
 				//if current value is string, then convert it to the string and split the string with comma
-				extraAnd = append(extraAnd, sq.Eq{currentTableField: inParams})
+				extraOperator = append(extraOperator, sq.Eq{currentTableField: inParams})
 				//values = append(values, inParams...)
 				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
 			}
 
 			if currentOperator == QPEq || currentOperator == QPEqSmb {
-				extraAnd = append(extraAnd, sq.Eq{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.Eq{currentTableField: currentValue})
 			} else if currentOperator == QPGt || currentOperator == QPGtSmb {
-				extraAnd = append(extraAnd, sq.Gt{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.Gt{currentTableField: currentValue})
 			} else if currentOperator == QPLt || currentOperator == QPGtSmb {
-				extraAnd = append(extraAnd, sq.Lt{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.Lt{currentTableField: currentValue})
 			} else if currentOperator == QPGte || currentOperator == QPGteSmb {
-				extraAnd = append(extraAnd, sq.GtOrEq{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.GtOrEq{currentTableField: currentValue})
 			} else if currentOperator == QPLte || currentOperator == QPLteSmb {
-				extraAnd = append(extraAnd, sq.LtOrEq{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.LtOrEq{currentTableField: currentValue})
 			} else if currentOperator == QPLike {
 				currentValue = `%` + fmt.Sprint(currentValue) + `%`
-				extraAnd = append(extraAnd, sq.Like{currentTableField: currentValue})
+				extraOperator = append(extraOperator, sq.Like{currentTableField: currentValue})
 			} else {
 				return nil, errors.New(fmt.Sprint(`unrecognised operator: `, currentOperator))
 			}
 		}
 	}
-	return extraAnd, nil
+	return extraOperator, nil
 }
 
 func (gd *GenericDao) Update(intf interface{}) (sql.Result, error) {

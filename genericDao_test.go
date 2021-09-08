@@ -103,6 +103,8 @@ func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 	queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
 	queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
 	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
+	queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
+	queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
 	result, err := dao.SelectWithExtraQuery(item, queryWrapper)
 	fmt.Println(result)
 	//fmt.Println(result.RowsAffected())
