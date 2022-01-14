@@ -36,6 +36,8 @@ const (
 	QPLte    QueryOperator = `lte`
 	QPLteSmb QueryOperator = `<=`
 	QPLike   QueryOperator = `like`
+	QPIs	 QueryOperator = `is`
+	QPIsNot  QueryOperator = `is not`
 )
 
 type CommonFields struct {
@@ -133,7 +135,7 @@ func NewGenericDao(db *sqlx.DB) *GenericDao {
 		panic(`the pointer of database is nil`)
 	}
 	if err := db.Ping(); err != nil {
-		fmt.Println(err)
+		zap.L().Error(`can't connect to the database`)
 		panic(`can't connect to the database`)
 	}
 	return &GenericDao{db: db}
@@ -258,7 +260,6 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 		}
 	}
 	var fieldInfo = fieldInfo{JSONField: jsonField, TableField: tableFiled, Type: field.Type.Name(), IsPrimaryKey: isPrimaryKey, AutoFilled: autoFill, Field: field.Name}
-	zap.L().Debug(fmt.Sprint(fieldInfo))
 	return &fieldInfo
 }
 
@@ -405,7 +406,7 @@ func (gd *GenericDao) addExtraQuery(intf interface{}, extraQuery *ExtraQueryWrap
 				extraOperator = append(extraOperator, sq.Eq{currentTableField: currentValue})
 			} else if currentOperator == QPGt || currentOperator == QPGtSmb {
 				extraOperator = append(extraOperator, sq.Gt{currentTableField: currentValue})
-			} else if currentOperator == QPLt || currentOperator == QPGtSmb {
+			} else if currentOperator == QPLt || currentOperator == QPLtSmb {
 				extraOperator = append(extraOperator, sq.Lt{currentTableField: currentValue})
 			} else if currentOperator == QPGte || currentOperator == QPGteSmb {
 				extraOperator = append(extraOperator, sq.GtOrEq{currentTableField: currentValue})
@@ -414,6 +415,10 @@ func (gd *GenericDao) addExtraQuery(intf interface{}, extraQuery *ExtraQueryWrap
 			} else if currentOperator == QPLike {
 				currentValue = `%` + fmt.Sprint(currentValue) + `%`
 				extraOperator = append(extraOperator, sq.Like{currentTableField: currentValue})
+			} else if currentOperator == QPIs {
+				extraOperator = append(extraOperator, sq.Eq{currentTableField: currentValue})
+			} else if currentOperator == QPIsNot {
+				extraOperator = append(extraOperator, sq.NotEq{currentTableField: currentValue})
 			} else {
 				return nil, errors.New(fmt.Sprint(`unrecognised operator: `, currentOperator))
 			}
