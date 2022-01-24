@@ -42,10 +42,10 @@ const (
 
 type CommonFields struct {
 	Id         null.Int        `json:"id" archType:"primaryKey"`
-	CreateTime util.MyNullTime `json:"create_time" db:"create_time" archType:"autoFill"`
-	CreatorBy  null.String     `json:"create_by" db:"create_by" archType:"autoFill"`
-	UpdateTime util.MyNullTime `json:"update_time" db:"update_time" archType:"autoFill"`
-	UpdateBy   null.String     `json:"update_by" db:"update_by" archType:"autoFill"`
+	CreateTime util.MyNullTime `json:"createTime" db:"create_time" archType:"autoFill"`
+	CreatorBy  null.String     `json:"createBy" db:"create_by" archType:"autoFill"`
+	UpdateTime util.MyNullTime `json:"updateTime" db:"update_time" archType:"autoFill"`
+	UpdateBy   null.String     `json:"updateBy" db:"update_by" archType:"autoFill"`
 	Del        null.Bool       `json:"-" db:"del" archType:"autoFill"`
 }
 
