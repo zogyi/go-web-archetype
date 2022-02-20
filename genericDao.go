@@ -96,6 +96,13 @@ type structFieldsInfo struct {
 	autoFilledFields map[string]*fieldInfo          //自动填充字段
 }
 
+func (strFieldInfo *structFieldsInfo) GetColumns() (columns []string) {
+	for _, info := range strFieldInfo.fullFieldMapping {
+		columns = append(columns, info.TableField)
+	}
+	return columns
+}
+
 func (strFieldInfo *structFieldsInfo) addField(fInfo *fieldInfo) {
 	if fInfo == nil {
 		panic(`the param fInfo is null`)
@@ -129,6 +136,21 @@ type GenericDao struct {
 	//customTypeFieldMapping map[string]map[string]*fieldInfo //自定义类型的字段
 	//commonFields 	   util.CommonFields
 }
+
+func (gd *GenericDao)GetColumns(entity string)(columns []string, exist bool) {
+	if fieldsInfo, exist := gd.structInfo[entity]; exist {
+		return fieldsInfo.GetColumns(), true
+	}
+	return columns, false
+}
+
+func (gd *GenericDao)GetTable(entity string) (string, bool) {
+	if table, exist := gd.entityTableMapping[entity]; exist {
+		return table, true
+	}
+	return ``, false
+}
+
 
 func NewGenericDao(db *sqlx.DB) *GenericDao {
 	if db == nil {
@@ -326,16 +348,19 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
-func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper) (selectBuilder sq.SelectBuilder) {
+func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
-	entityName := reflect.TypeOf(intf).Name()
+	if len(columns) <= 0 {
+		columns = []string{`*`}
+	}
+		entityName := reflect.TypeOf(intf).Name()
 	table := gd.entityTableMapping[entityName]
 	eqClause, _ , hasPrimaryKey := gd.Validate(intf, Select, extraQuery.CurrentUsername)
 	if hasPrimaryKey {
 		eqClause = map[string]interface{}{gd.structInfo[entityName].primaryKey.TableField : eqClause[gd.structInfo[entityName].primaryKey.TableField]}
-		selectBuilder = sq.Select(`*`).From(table).Where(eqClause)
+		selectBuilder = sq.Select(columns...).From(table).Where(eqClause)
 	} else {
 		var extraAnd sq.And
 		var extraOr sq.Or
@@ -349,10 +374,10 @@ func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *Extr
 		if err != nil {
 			panic(err)
 		}
-		if (extraOr != nil) {
+		if extraOr != nil {
 			extraAnd = append(extraAnd, extraOr)
 		}
-		selectBuilder = sq.Select(`*`).From(table).Where(extraAnd)
+		selectBuilder = sq.Select(columns...).From(table).Where(extraAnd)
 	}
 	return selectBuilder
 }
