@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
-	"reflect"
 )
 
 type daoExecutor struct {
@@ -37,31 +36,29 @@ func (executor *daoExecutor) insertOrUpdate(sqlQuery string, args []interface{})
 }
 
 
-func (executor *daoExecutor) selectList(sqlQuery string, args []interface{}, resultType reflect.Type) (result interface{}, err error) {
-	resultSlice := reflect.MakeSlice(reflect.SliceOf(resultType), 0, 10)
-	x := reflect.New(resultSlice.Type())
-	x.Elem().Set(resultSlice)
+func (executor *daoExecutor) selectList(sqlQuery string, args []interface{}, result interface{}) error {
+	//resultSlice := reflect.MakeSlice(reflect.SliceOf(resultType), 0, 10)
+	//x := reflect.New(resultSlice.Type())
+	//x.Elem().Set(resultSlice)
+	var err error
 	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
 	if executor.isTx() {
 		executor.Tx = executor.Tx.Unsafe()
-		err = executor.Tx.Select(x.Interface(), sqlQuery, args...)
+		err = executor.Tx.Select(result, sqlQuery, args...)
 	} else {
 		db := executor.DB.Unsafe()
-		err = db.Select(x.Interface(), sqlQuery, args...)
+		err = db.Select(result, sqlQuery, args...)
 	}
-	return x.Interface(), err
+	return err
 }
 
-func (executor *daoExecutor) get(sqlQuery string, args []interface{}, resultType reflect.Type) (result interface{}, err error) {
-	resultVal := reflect.New(resultType)
+func (executor *daoExecutor) get(sqlQuery string, args []interface{}, result interface{}) error {
 	zap.L().Sugar().Debugf("SQL: %s, Arguments: %s", sqlQuery, args)
+	var err error
 	if executor.isTx() {
-		err = executor.Tx.Get(resultVal.Interface(), sqlQuery, args...)
+		err = executor.Tx.Get(result, sqlQuery, args...)
 	} else {
-		err = executor.DB.Get(resultVal.Interface(), sqlQuery, args...)
+		err = executor.DB.Get(result, sqlQuery, args...)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return resultVal.Interface(), err
+	return err
 }
