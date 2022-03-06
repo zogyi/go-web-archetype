@@ -38,6 +38,7 @@ const (
 	QPLike   QueryOperator = `like`
 	QPIs	 QueryOperator = `is`
 	QPIsNot  QueryOperator = `is not`
+	QPIn 	 QueryOperator = `in`
 )
 
 type CommonFields struct {
@@ -348,6 +349,35 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(intf interface{}, extraQuery *Ex
 	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
 }
 
+func (gd *GenericDao) SelectList(intf interface{}) (interface{}, error) {
+	return gd.SelectListWithExtraQuery(intf, nil)
+}
+
+func (gd *GenericDao) SelectListWithExtraQuery(intf interface{}, extraQuery *ExtraQueryWrapper) (interface{}, error) {
+	return gd.SelectListWithExtraQueryAndTx(intf, extraQuery, nil)
+}
+
+func (gd *GenericDao) SelectListWithExtraQueryAndTx(intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
+	if extraQuery == nil {
+		extraQuery = NewDefaultExtraQueryWrapper()
+	}
+	if reflect.TypeOf(intf).Kind() != reflect.Struct {
+		return nil, errors.New(`the interface should be a struct non of pointer`)
+	}
+	table := gd.entityTableMapping[reflect.TypeOf(intf).Name()]
+	if table == `` || strings.TrimSpace(table) == `` {
+		return nil, errors.New(`no mapping found for the interface` + reflect.TypeOf(intf).Name())
+	}
+
+	executor := daoExecutor{DB: gd.db, Tx: tx}
+	builder := gd.TransferToSelectBuilder(intf, extraQuery)
+	sqlQuery, sqlArgs, err := sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
+	if err != nil {
+		return nil, err
+	}
+	return executor.selectList(sqlQuery, sqlArgs, reflect.TypeOf(intf))
+}
+
 func (gd *GenericDao) TransferToSelectBuilder(intf interface{}, extraQuery *ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
@@ -415,7 +445,7 @@ func (gd *GenericDao) addExtraQuery(intf interface{}, extraQuery *ExtraQueryWrap
 				return nil, errors.New(fmt.Sprintf(`can't find field mapping for the entity '%v' and the field '%v'`, currentEntity, currentJSONFields))
 			}
 
-			if currentOperator == `in` {
+			if currentOperator == QPIn {
 				queryVal := reflect.ValueOf(currentValue)
 				if queryVal.Kind() == reflect.String {
 					currentValue = strings.Split(currentValue.(string), `,`)
