@@ -108,32 +108,33 @@ type fieldInfo struct {
 }
 
 type structInfo struct {
-	fullFieldMapping map[string]*fieldInfo //所有的字段集合
-	primaryKey       *fieldInfo            //主键字段
-	autoFilledFields map[string]*fieldInfo //自动填充字段
-	LogicDel 		 bool
+	fieldInfos       map[string]fieldInfo //所有的字段集合
+	jsonFieldInfos   map[string]fieldInfo //所有的字段集合
+	primaryKey       fieldInfo            //主键字段
+	autoFilledFields map[string]fieldInfo //自动填充字段
+	LogicDel         bool
 }
 
 func (strFieldInfo *structInfo) GetColumns() (columns []string) {
-	for _, info := range strFieldInfo.fullFieldMapping {
+	for _, info := range strFieldInfo.fieldInfos {
 		columns = append(columns, info.TableField)
 	}
 	return columns
 }
 
-func (strFieldInfo *structInfo) addField(fInfo *fieldInfo) {
-	if fInfo == nil {
+func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
+	if (fieldInfo{}) == fInfo {
 		panic(`the param fInfo is null`)
 	}
-	if strFieldInfo.fullFieldMapping == nil {
-		strFieldInfo.fullFieldMapping = make(map[string]*fieldInfo)
+	if strFieldInfo.fieldInfos == nil {
+		strFieldInfo.fieldInfos = make(map[string]fieldInfo)
 	}
 	if strFieldInfo.autoFilledFields == nil {
-		strFieldInfo.autoFilledFields = make(map[string]*fieldInfo)
+		strFieldInfo.autoFilledFields = make(map[string]fieldInfo)
 	}
-	strFieldInfo.fullFieldMapping[fInfo.Field] = fInfo
+	strFieldInfo.fieldInfos[fInfo.Field] = fInfo
 	if fInfo.IsPrimaryKey {
-		if strFieldInfo.primaryKey != nil && strFieldInfo.primaryKey.TableField != fInfo.TableField{
+		if (fieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField{
 			panic(fmt.Sprintf(`the field set as primary key can't more than 1, the existing primary key is %s and the new primary key is %s`, strFieldInfo.primaryKey.TableField, fInfo.TableField))
 		}
 		strFieldInfo.primaryKey = fInfo
@@ -149,10 +150,10 @@ func (strFieldInfo *structInfo) addField(fInfo *fieldInfo) {
 type entitiesInfo map[string]structInfo
 
 type GenericDao struct {
-	db                     *sqlx.DB
-	bondEntities           []interface{}     //所有的entity
-	entityTableMapping     map[string]string //entity与table名字之间的映射
-	fieldEntityInfoMapping entitiesInfo      //entity field所有的表单的映射
+	db                 *sqlx.DB
+	bondEntities       []interface{}     //所有的entity
+	entityTableMapping map[string]string //entity与table名字之间的映射
+	entitiesInfos      entitiesInfo      //entity field所有的表单的映射
 	//tablePrimaryKey    map[string]*fieldInfo       //table's primary key mapping
 	//自定义类型如下
 	customType []interface{} //用户自定义的类型
@@ -161,10 +162,10 @@ type GenericDao struct {
 }
 
 func (gd *GenericDao) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
-	if structInfo, exist := gd.fieldEntityInfoMapping[structName]; exist {
-		for _, fieldInfo := range structInfo.fullFieldMapping {
+	if structInfo, exist := gd.entitiesInfos[structName]; exist {
+		for _, fieldInfo := range structInfo.fieldInfos {
 			if fieldInfo.JSONField == jsonName {
-				return *fieldInfo, true
+				return fieldInfo, true
 			}
 		}
 	}
@@ -173,7 +174,7 @@ func (gd *GenericDao) getFieldInfo(structName string, jsonName string) (fieldInf
 
 
 func (gd *GenericDao)GetColumns(entity string)(columns []string, exist bool) {
-	if fieldsInfo, exist := gd.fieldEntityInfoMapping[entity]; exist {
+	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
 		return fieldsInfo.GetColumns(), true
 	}
 	return columns, false
@@ -211,8 +212,8 @@ func NewGenericDaoWithCustomerType(db *sqlx.DB, types ...interface{}) *GenericDa
 
 func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao {
 	//reflect.TypeOf(types).Name()
-	if gd.fieldEntityInfoMapping == nil {
-		gd.fieldEntityInfoMapping = entitiesInfo{}
+	if gd.entitiesInfos == nil {
+		gd.entitiesInfos = entitiesInfo{}
 	}
 	for i := 0; i < len(types); i++ {
 		crtType := reflect.TypeOf(types[i])
@@ -227,7 +228,7 @@ func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao {
 			crtFieldInfo := getFieldInfo(crtField)
 			structInfo.addField(crtFieldInfo)
 		}
-		gd.fieldEntityInfoMapping[currentTypeName] = structInfo
+		gd.entitiesInfos[currentTypeName] = structInfo
 	}
 	gd.customType = append(gd.customType, types...)
 	return gd
@@ -262,8 +263,8 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	if gd.entityTableMapping == nil {
 		gd.entityTableMapping = make(map[string]string)
 	}
-	if gd.fieldEntityInfoMapping == nil {
-		gd.fieldEntityInfoMapping = entitiesInfo{}
+	if gd.entitiesInfos == nil {
+		gd.entitiesInfos = entitiesInfo{}
 	}
 	gd.entityTableMapping[crtIrf.Name()] = table
 	var structInfo structInfo
@@ -271,8 +272,8 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	for i := 0; i < fieldCount; i++ {
 		currentField := reflect.TypeOf(interf).Field(i)
 		if gd.containCustomType(currentField.Type) {
-			if customStructConfig, ok := gd.fieldEntityInfoMapping[currentField.Name]; ok {
-				for _, v := range customStructConfig.fullFieldMapping {
+			if customStructConfig, ok := gd.entitiesInfos[currentField.Name]; ok {
+				for _, v := range customStructConfig.fieldInfos {
 					structInfo.addField(v)
 				}
 			} else {
@@ -283,12 +284,12 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 			structInfo.addField(fieldInfo)
 		}
 	}
-	gd.fieldEntityInfoMapping[crtIrf.Name()] = structInfo
+	gd.entitiesInfos[crtIrf.Name()] = structInfo
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
 
-func getFieldInfo(field reflect.StructField) *fieldInfo {
+func getFieldInfo(field reflect.StructField) fieldInfo {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
 	var isPrimaryKey, autoFill, isLogicDel bool
@@ -318,7 +319,7 @@ func getFieldInfo(field reflect.StructField) *fieldInfo {
 		}
 	}
 
-	return &fieldInfo{
+	return fieldInfo{
 		JSONField: jsonField,
 		TableField: tableFiled,
 		Type: field.Type.Name(),
@@ -431,7 +432,7 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	table := gd.entityTableMapping[entityName]
 	eqClause, _ , hasPrimaryKey := gd.Validate(queryObj, Select, extraQuery.CurrentUsername)
 	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.fieldEntityInfoMapping[entityName].primaryKey.TableField : eqClause[gd.fieldEntityInfoMapping[entityName].primaryKey.TableField]}
+		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 		selectBuilder = sq.Select(columns...).From(table).Where(eqClause)
 	} else {
 		var extraAnd sq.And
@@ -465,12 +466,12 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 
 func (gd *GenericDao) orderByToSql(queryObj interface{}, orderBy OrderBy) string{
 	structName := reflect.TypeOf(queryObj).Name()
-	if mappingStruct, exist := gd.fieldEntityInfoMapping[structName]; exist {
+	if mappingStruct, exist := gd.entitiesInfos[structName]; exist {
 		if len(orderBy.Fields) > 0 || orderBy.OrderType != `` {
 			columns := make([]string, 0)
 			for _, field := range orderBy.Fields {
 				currentColumn := ``
-				for _, fieldInfo := range mappingStruct.fullFieldMapping {
+				for _, fieldInfo := range mappingStruct.fieldInfos {
 					if fieldInfo.JSONField == field {
 						currentColumn = fieldInfo.TableField
 					}
@@ -495,8 +496,8 @@ func (gd *GenericDao) addExtraQuery(queryObj interface{}, extraQuery *ExtraQuery
 	}
 	var extraOperator []sq.Sqlizer
 	currentEntity := reflect.TypeOf(queryObj).Name()
-	structFields := gd.fieldEntityInfoMapping[currentEntity]
-	for structFields.fullFieldMapping == nil || len(structFields.fullFieldMapping) == 0 {
+	structFields := gd.entitiesInfos[currentEntity]
+	for structFields.fieldInfos == nil || len(structFields.fieldInfos) == 0 {
 		return nil, errors.New(`can't find fields mapping for the entity ` + currentEntity)
 	}
 	if extraQuery != nil && extraQuery.Query != nil {
@@ -512,7 +513,7 @@ func (gd *GenericDao) addExtraQuery(queryObj interface{}, extraQuery *ExtraQuery
 			currentJSONFields := strings.TrimSpace(queryItemArray[i].Field)
 			currentValue = queryItemArray[i].Value
 			var currentTableField string
-			for _, fieldInfo := range structFields.fullFieldMapping {
+			for _, fieldInfo := range structFields.fieldInfos {
 				if fieldInfo.JSONField == currentJSONFields {
 					currentTableField = fieldInfo.TableField
 					break
@@ -583,7 +584,7 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(queryObj interface{}, extraQuer
 	eqClause, setMap, hasPrimaryKey := gd.Validate(queryObj, Update, extraQueryWrapper.CurrentUsername)
 	//fields, values := gd.getValidColumnVal(returnResult, Update, extraQueryWrapper)
 	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.fieldEntityInfoMapping[entityName].primaryKey.TableField : eqClause[gd.fieldEntityInfoMapping[entityName].primaryKey.TableField]}
+		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 	}
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
 	if err != nil {
@@ -659,12 +660,12 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 
 	eqClause, setMap, hasPrimaryKey  := gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
 	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.fieldEntityInfoMapping[entityName].primaryKey.TableField : eqClause[gd.fieldEntityInfoMapping[entityName].primaryKey.TableField]}
+		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 	}
 	var sqlQuery string
 	var sqlArgs  []interface{}
 	var err error
-	if gd.fieldEntityInfoMapping[entityName].LogicDel {
+	if gd.entitiesInfos[entityName].LogicDel {
 		sqlQuery, sqlArgs, err = sq.Update(table).Where(eqClause).SetMap(setMap).ToSql()
 	} else {
 		sqlQuery, sqlArgs, err = sq.Delete(table).Where(eqClause).ToSql()
@@ -697,7 +698,7 @@ func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, execut
 	}
 	var structFields structInfo
 	var ok bool
-	if structFields, ok = gd.fieldEntityInfoMapping[intfType.Name()]; !ok {
+	if structFields, ok = gd.entitiesInfos[intfType.Name()]; !ok {
 		panic(`can't find the fields configuration for the struct ` + intfType.Name())
 	}
 	if strings.TrimSpace(executeUser) == `` {
@@ -706,7 +707,7 @@ func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, execut
 	eqClause = make(sq.Eq)
 	setMap = make(map[string]interface{})
 	for i := 0; i < intfType.NumField(); i++ {
-		var filedCfg *fieldInfo
+		var filedCfg fieldInfo
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
@@ -720,7 +721,7 @@ func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, execut
 			primaryKeyValid = primaryKeyValid || subPrimaryKeyValid
 			continue
 		}
-		if filedCfg, ok = structFields.fullFieldMapping[crtFiledType.Name]; !ok {
+		if filedCfg, ok = structFields.fieldInfos[crtFiledType.Name]; !ok {
 			panic(fmt.Sprintf(`can't find the configuration for the struct %s of field %s`, intfType.Name(), crtFiledType.Name))
 		}
 		if filedCfg.AutoFilled {
