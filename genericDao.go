@@ -66,10 +66,21 @@ const (
 	DESC OrderByType = `DESC`
 )
 type OrderBy struct {
-	Fields 		[]string	`json:"fields"`
-	OrderType   OrderByType `json:"orderType"`
+	JSONFields []string    `json:"fields"`
+	columns    []string    `json:"-"`
+	OrderType  OrderByType `json:"orderType"`
 }
 
+func (ob *OrderBy) setColumn(columns []string) {
+	ob.columns = columns
+}
+
+func (ob *OrderBy) ToSql() string {
+	if ob.columns != nil && len(ob.columns) > 0 && strings.TrimSpace(string(ob.OrderType)) != ``{
+		return fmt.Sprintf(`%s %s`, strings.Join(ob.columns, `,`), ob.OrderType)
+	}
+	return ``
+}
 
 type QueryWrapper struct {
 	And   	[]QueryItem       	`json:"and"`
@@ -129,10 +140,14 @@ func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 	if strFieldInfo.fieldInfos == nil {
 		strFieldInfo.fieldInfos = make(map[string]fieldInfo)
 	}
+	if strFieldInfo.jsonFieldInfos == nil {
+		strFieldInfo.jsonFieldInfos = make(map[string] fieldInfo)
+	}
 	if strFieldInfo.autoFilledFields == nil {
 		strFieldInfo.autoFilledFields = make(map[string]fieldInfo)
 	}
 	strFieldInfo.fieldInfos[fInfo.Field] = fInfo
+	strFieldInfo.jsonFieldInfos[fInfo.JSONField] = fInfo
 	if fInfo.IsPrimaryKey {
 		if (fieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField{
 			panic(fmt.Sprintf(`the field set as primary key can't more than 1, the existing primary key is %s and the new primary key is %s`, strFieldInfo.primaryKey.TableField, fInfo.TableField))
@@ -452,42 +467,31 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 		}
 		selectBuilder = sq.Select(columns...).From(table).Where(extraAnd)
 	}
-	selectBuilder = selectBuilder.GroupBy(extraQuery.Query.GroupBy...)
+	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.Query.GroupBy)
+	selectBuilder = selectBuilder.GroupBy(currentColumns...)
 	subOrderBy := make([]string, 0)
 	for _, orderByItem := range extraQuery.Query.OrderBy {
-		crtOrderStr := strings.TrimSpace(gd.orderByToSql(queryObj, orderByItem))
-		if crtOrderStr != `` {
-			subOrderBy = append(subOrderBy, crtOrderStr)
+		orderByItem.setColumn(gd.jsonFields2Columns(queryObj, orderByItem.JSONFields))
+		crtOrderSQL := orderByItem.ToSql()
+		if strings.TrimSpace(crtOrderSQL) != `` {
+			subOrderBy = append(subOrderBy, crtOrderSQL)
 		}
 	}
-	//selectBuilder = selectBuilder.OrderBy(subOrderBy...) TODO: get the field by the json key name
+	selectBuilder = selectBuilder.OrderBy(subOrderBy...)
 	return selectBuilder
 }
 
-func (gd *GenericDao) orderByToSql(queryObj interface{}, orderBy OrderBy) string{
+func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []string) []string{
 	structName := reflect.TypeOf(queryObj).Name()
+	columns := make([]string, 0)
 	if mappingStruct, exist := gd.entitiesInfos[structName]; exist {
-		if len(orderBy.Fields) > 0 || orderBy.OrderType != `` {
-			columns := make([]string, 0)
-			for _, field := range orderBy.Fields {
-				currentColumn := ``
-				for _, fieldInfo := range mappingStruct.fieldInfos {
-					if fieldInfo.JSONField == field {
-						currentColumn = fieldInfo.TableField
-					}
-				}
-				if strings.TrimSpace(currentColumn) == `` {
-					panic(fmt.Sprintf(`cant't find the field %s for the strcut %s`, field, structName))
-				}
-				columns = append(columns, currentColumn)
-			}
-			if len(columns) > 0 {
-				return fmt.Sprintf(`%s %s`, strings.Join(columns, `,`), orderBy.OrderType)
+		for _, jsonField := range jsonFields {
+			if fieldInfo, exist := mappingStruct.jsonFieldInfos[jsonField]; exist {
+				columns = append(columns, fieldInfo.TableField)
 			}
 		}
-		return ``
 	}
-	panic(`can't find the mapping for the struct'`)
+	return columns
 }
 
 func (gd *GenericDao) addExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, isAnd bool) ([]sq.Sqlizer, error) {
@@ -513,13 +517,10 @@ func (gd *GenericDao) addExtraQuery(queryObj interface{}, extraQuery *ExtraQuery
 			currentJSONFields := strings.TrimSpace(queryItemArray[i].Field)
 			currentValue = queryItemArray[i].Value
 			var currentTableField string
-			for _, fieldInfo := range structFields.fieldInfos {
-				if fieldInfo.JSONField == currentJSONFields {
-					currentTableField = fieldInfo.TableField
-					break
-				}
-			}
-			if strings.TrimSpace(currentEntity) == `` || strings.TrimSpace(currentTableField) == `` {
+
+			if fieldInfo, exist := structFields.jsonFieldInfos[currentJSONFields]; exist {
+				currentTableField = fieldInfo.TableField
+			} else {
 				return nil, errors.New(fmt.Sprintf(`can't find field mapping for the entity '%v' and the field '%v'`, currentEntity, currentJSONFields))
 			}
 
