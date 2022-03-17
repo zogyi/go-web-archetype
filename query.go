@@ -1,6 +1,7 @@
 package go_web_archetype
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	sq "github.com/Masterminds/squirrel"
@@ -58,9 +59,38 @@ const (
 )
 
 type QueryJSON struct {
-	Operator Connector		 `json:"operator"`
+	Operator string		 `json:"operator"`
 	Condition []SqlTranslate `json:"conditions"`
 }
+
+func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
+	temp := make(map[string]interface{})
+	err = json.Unmarshal(data, &temp)
+	if err != nil {
+		return
+	}
+
+	m.Operator = temp["operator"].(string)
+	switch val := temp["conditions"].(type) {
+	case []interface{}:
+		fmt.Println(`here am i`)
+	case []QueryItem:
+		test := make([]SqlTranslate, 0)
+		test = append(test, QueryItem{})
+		m.Condition = test
+	case []QueryJSON:
+		test := make([]SqlTranslate, 0)
+		test = append(test, QueryJSON{})
+		m.Condition = test
+	default:
+		err = fmt.Errorf("type %T not supported", val)
+	}
+
+	return
+}
+
+
+
 
 func (qj QueryJSON) ToSQL() (sql string, arg []interface{}, err error){
 	sql = sql + ` (`
