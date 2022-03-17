@@ -54,11 +54,6 @@ type CommonDel struct {
 }
 
 //TODO: 1. extract the field and columns mapping and save into a map
-type QueryItem struct {
-	Field    string        `json:"field"`
-	Operator QueryOperator `json:"operator"`
-	Value    interface{}   `json:"value"`
-}
 
 type OrderByType string
 const (
@@ -663,6 +658,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	if hasPrimaryKey {
 		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 	}
+
 	var sqlQuery string
 	var sqlArgs  []interface{}
 	var err error
@@ -761,8 +757,8 @@ func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, execut
 			}
 		}
 	}
-	if (operation == Delete || operation == Update) && !primaryKeyValid && !gd.containCustomType(intfType) {
-		panic(`unsupported query object, should have value for the primary key when execute the update or delete method`)
-	}
+	//if (operation == Delete || operation == Update) && !primaryKeyValid && !gd.containCustomType(intfType) {
+	//	panic(`unsupported query object, should have value for the primary key when execute the update or delete method`)
+	//}
 	return eqClause, setMap, primaryKeyValid
 }
