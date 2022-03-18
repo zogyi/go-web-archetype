@@ -8,7 +8,7 @@ import (
 
 func TestToSql(t *testing.T) {
 	jsonString := `{
-  "operator": "AND",
+  "connector": "AND",
   "conditions": [
     {
       "field": "X",
@@ -16,7 +16,7 @@ func TestToSql(t *testing.T) {
       "operator": "gt"
     },
     {
-      "operator": "OR",
+      "connector": "OR",
       "conditions": [
         {
           "field": "Y",
@@ -40,4 +40,6 @@ func TestToSql(t *testing.T) {
 	test := QueryJSON{}
 	err := json.Unmarshal([]byte(jsonString), &test)
 	fmt.Println(err)
+	fmt.Println(test)
+	fmt.Println(test.ToSQL())
 }

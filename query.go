@@ -20,6 +20,34 @@ type QueryItem struct {
 	Value    interface{}   `json:"value"`
 }
 
+func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
+	var queryItemRawMsg map[string]*json.RawMessage
+	if err = json.Unmarshal(data, &queryItemRawMsg); err == nil {
+		for key, val := range queryItemRawMsg {
+			switch key {
+			case `field`:
+				if err = json.Unmarshal(*val, &qi.Field); err != nil {
+					return err
+				}
+				break
+			case `operator`:
+				if err = json.Unmarshal(*val, &qi.Operator); err != nil {
+					return err
+				}
+				break
+			case `value`:
+				if err = json.Unmarshal(*val, &qi.Value); err != nil {
+					return err
+				}
+				break
+			default:
+				return errors.New(`unmatched format`)
+			}
+		}
+	}
+	return
+}
+
 func (qi QueryItem)ToSQL()(sql string, args []interface{}, err error){
 	switch qi.Operator {
 	case QPIn:
@@ -59,37 +87,45 @@ const (
 )
 
 type QueryJSON struct {
-	Operator string		 `json:"operator"`
+	Operator string		 	 `json:"connector"`
 	Condition []SqlTranslate `json:"conditions"`
 }
 
 func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
-	temp := make(map[string]interface{})
-	err = json.Unmarshal(data, &temp)
-	if err != nil {
-		return
+	var queryJSONRawMsg map[string]*json.RawMessage
+	if err := json.Unmarshal(data, &queryJSONRawMsg); err != nil {
+		return err
 	}
-
-	m.Operator = temp["operator"].(string)
-	switch val := temp["conditions"].(type) {
-	case []interface{}:
-		fmt.Println(`here am i`)
-	case []QueryItem:
-		test := make([]SqlTranslate, 0)
-		test = append(test, QueryItem{})
-		m.Condition = test
-	case []QueryJSON:
-		test := make([]SqlTranslate, 0)
-		test = append(test, QueryJSON{})
-		m.Condition = test
-	default:
-		err = fmt.Errorf("type %T not supported", val)
+	for key, val := range queryJSONRawMsg {
+		if key == `connector` {
+			var connector string
+			if err := json.Unmarshal(*val, &connector); err != nil {
+				return err
+			}
+			m.Operator = connector
+		} else if key == `conditions` {
+			conditionsRawData := make([]*json.RawMessage, 0)
+			m.Condition = make([]SqlTranslate, 0)
+			if err := json.Unmarshal(*val, &conditionsRawData); err != nil {
+				return err
+			}
+			for _, item := range conditionsRawData {
+				var queryItem QueryItem
+				if err := json.Unmarshal(*item, &queryItem); err != nil {
+					var queryJSON QueryJSON
+					if err = json.Unmarshal(*item, &queryJSON); err != nil {
+						return err
+					} else {
+						m.Condition = append(m.Condition, queryJSON)
+					}
+				} else {
+					m.Condition = append(m.Condition, queryItem)
+				}
+			}
+		}
 	}
-
 	return
 }
-
-
 
 
 func (qj QueryJSON) ToSQL() (sql string, arg []interface{}, err error){
@@ -109,7 +145,7 @@ func (qj QueryJSON) ToSQL() (sql string, arg []interface{}, err error){
 		subQueries = append(subQueries, crtQuery)
 		arg = append(arg, crtArgs)
 	}
-	sql = sql + strings.Join(subQueries,  fmt.Sprintf(` %s `, qj.Condition))
+	sql = sql + strings.Join(subQueries,  fmt.Sprintf(` %s `, qj.Operator))
 	sql = sql + ` )`
 	return sql, arg, err
 }
