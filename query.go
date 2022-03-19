@@ -11,7 +11,7 @@ import (
 )
 
 type SqlTranslate interface {
-	ToSQL()(string, []interface{}, error)
+	ToSQL()(sq.Sqlizer, error)
 }
 
 type QueryItem struct {
@@ -48,7 +48,7 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-func (qi QueryItem)ToSQL()(sql string, args []interface{}, err error){
+func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error){
 	switch qi.Operator {
 	case QPIn:
 		currentValue := qi.Value
@@ -57,29 +57,44 @@ func (qi QueryItem)ToSQL()(sql string, args []interface{}, err error){
 			currentValue = strings.Split(qi.Value.(string), `,`)
 		}
 		inParams := util.InterfaceSlice(currentValue)
-		return sq.Eq{qi.Field: inParams}.ToSql()
+		return sq.Eq{qi.Field: inParams}, nil
 	case QPEq,QPEqSmb:
-		return sq.Eq{qi.Field: qi.Value}.ToSql()
+		return sq.Eq{qi.Field: qi.Value}, nil
 	case QPGt,QPGtSmb:
-		return sq.Gt{qi.Field: qi.Value}.ToSql()
+		return sq.Gt{qi.Field: qi.Value}, nil
 	case QPLt,QPLtSmb:
-		return sq.Lt{qi.Field: qi.Value}.ToSql()
+		return sq.Lt{qi.Field: qi.Value}, nil
 	case QPGte,QPGteSmb:
-		return sq.GtOrEq{qi.Field: qi.Value}.ToSql()
+		return sq.GtOrEq{qi.Field: qi.Value}, nil
 	case QPLike:
 		qi.Value = `%` + fmt.Sprint(qi.Value) + `%`
-		return sq.Like{qi.Field: qi.Value}.ToSql()
+		return sq.Like{qi.Field: qi.Value}, nil
 	case QPIs:
-		return sq.Eq{qi.Field: qi.Value}.ToSql()
+		return sq.Eq{qi.Field: qi.Value}, nil
 	case QPIsNot:
-		return sq.NotEq{qi.Field: qi.Value}.ToSql()
+		return sq.NotEq{qi.Field: qi.Value}, nil
 	default:
-		return ``, nil, errors.New(`can't find it`)
+		return nil, errors.New(`can't find it`)
 	}
 }
 
 
 type Connector string
+
+func (c *Connector) UnmarshalJSON(data []byte)(err error) {
+	var currentStr string
+	if err := json.Unmarshal(data, &currentStr); err != nil {
+		return err
+	}
+	if strings.ToUpper(currentStr) == string(AND) {
+		*c = AND
+	} else if strings.ToUpper(currentStr) == string(OR) {
+		*c = OR
+	} else {
+		err = errors.New(`connector type not found`)
+	}
+	return err
+}
 
 const (
 	AND Connector = `AND`
@@ -87,7 +102,7 @@ const (
 )
 
 type QueryJSON struct {
-	Operator string		 	 `json:"connector"`
+	Operator Connector		 `json:"connector"`
 	Condition []SqlTranslate `json:"conditions"`
 }
 
@@ -97,13 +112,14 @@ func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	for key, val := range queryJSONRawMsg {
-		if key == `connector` {
-			var connector string
+		switch key {
+		case `connector`:
+			var connector Connector
 			if err := json.Unmarshal(*val, &connector); err != nil {
 				return err
 			}
 			m.Operator = connector
-		} else if key == `conditions` {
+		case `conditions`:
 			conditionsRawData := make([]*json.RawMessage, 0)
 			m.Condition = make([]SqlTranslate, 0)
 			if err := json.Unmarshal(*val, &conditionsRawData); err != nil {
@@ -122,32 +138,48 @@ func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
 					m.Condition = append(m.Condition, queryItem)
 				}
 			}
+		default:
+			return errors.New(`type not match`)
 		}
 	}
 	return
 }
 
-
-func (qj QueryJSON) ToSQL() (sql string, arg []interface{}, err error){
-	sql = sql + ` (`
-	subQueries := make([]string, 0)
+//func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error)
+func (qj QueryJSON)ToSQL()(sqlizer sq.Sqlizer, err error) {
+	if qj.Condition == nil || len(qj.Condition) == 0 {
+		return nil, errors.New(`condition array is empty`)
+	} else if len(qj.Condition) == 1 {
+		return qj.Condition[0].ToSQL()
+	}
+	operatorAnd := sq.And{}
+	operatorOr := sq.Or{}
 	for _, item := range qj.Condition {
-		var crtQuery string
-		var crtArgs []interface{}
+		var err error
+		var curentSqlizer sq.Sqlizer
 		switch pred := item.(type) {
 		case nil:
-			fmt.Println(`test`)
+			err = errors.New(`not supported nil format`)
 		case QueryItem:
-			crtQuery, crtArgs, err = pred.ToSQL()
+			curentSqlizer, err = pred.ToSQL()
 		case QueryJSON:
-			crtQuery, crtArgs, err = pred.ToSQL()
+			curentSqlizer, err = pred.ToSQL()
+		default:
+			errors.New(`not supported type`)
 		}
-		subQueries = append(subQueries, crtQuery)
-		arg = append(arg, crtArgs)
+		if err != nil {
+			return nil, err
+		}
+		if qj.Operator == AND {
+			operatorAnd = append(operatorAnd, curentSqlizer)
+		} else if qj.Operator == OR {
+			operatorOr = append(operatorOr, curentSqlizer)
+		} else {
+			return nil, errors.New(`not supported connector`)
+		}
 	}
-	sql = sql + strings.Join(subQueries,  fmt.Sprintf(` %s `, qj.Operator))
-	sql = sql + ` )`
-	return sql, arg, err
+	if qj.Operator == AND {
+		return operatorAnd, nil
+	}
+	return operatorOr, nil
 }
-
-
