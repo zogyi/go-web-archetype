@@ -33,7 +33,7 @@ func TestToSql(t *testing.T) {
 	err := json.Unmarshal([]byte(jsonString), &test)
 	fmt.Println(err)
 	fmt.Println(test)
-	sqlizer, err := test.ToSQL()
-	fmt.Println(err)
-	fmt.Println(sqlizer.ToSql())
+	//sqlizer, err := test.ToSQL()
+	//fmt.Println(err)
+	//fmt.Println(sqlizer.ToSql())
 }

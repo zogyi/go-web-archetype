@@ -30,7 +30,7 @@ const (
 )
 
 type SqlTranslate interface {
-	ToSQL() (sq.Sqlizer, error)
+	ToSQL(map[string]fieldInfo) (sq.Sqlizer, error)
 }
 
 type QueryItem struct {
@@ -67,7 +67,13 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-func (qi QueryItem) ToSQL() (sqlizer sq.Sqlizer, err error) {
+func (qi QueryItem) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err error) {
+	var column string
+	if fieldInfo, exist := json2Fields[qi.Field]; exist{
+		column = fieldInfo.TableField
+	} else {
+		return nil, errors.New(`can't find the column`)
+	}
 	switch qi.Operator {
 	case QPIn:
 		currentValue := qi.Value
@@ -76,24 +82,24 @@ func (qi QueryItem) ToSQL() (sqlizer sq.Sqlizer, err error) {
 			currentValue = strings.Split(qi.Value.(string), `,`)
 		}
 		inParams := util.InterfaceSlice(currentValue)
-		return sq.Eq{qi.Field: inParams}, nil
+		return sq.Eq{column: inParams}, nil
 	case QPEq, QPEqSmb:
-		return sq.Eq{qi.Field: qi.Value}, nil
+		return sq.Eq{column: qi.Value}, nil
 	case QPGt, QPGtSmb:
-		return sq.Gt{qi.Field: qi.Value}, nil
+		return sq.Gt{column: qi.Value}, nil
 	case QPLt, QPLtSmb:
-		return sq.Lt{qi.Field: qi.Value}, nil
+		return sq.Lt{column: qi.Value}, nil
 	case QPGte, QPGteSmb:
-		return sq.GtOrEq{qi.Field: qi.Value}, nil
+		return sq.GtOrEq{column: qi.Value}, nil
 	case QPLte, QPLteSmb:
-		return sq.LtOrEq{qi.Field: qi.Value}, nil
+		return sq.LtOrEq{column: qi.Value}, nil
 	case QPLike:
 		qi.Value = `%` + fmt.Sprint(qi.Value) + `%`
-		return sq.Like{qi.Field: qi.Value}, nil
+		return sq.Like{column: qi.Value}, nil
 	case QPIs:
-		return sq.Eq{qi.Field: qi.Value}, nil
+		return sq.Eq{column: qi.Value}, nil
 	case QPIsNot:
-		return sq.NotEq{qi.Field: qi.Value}, nil
+		return sq.NotEq{column: qi.Value}, nil
 	default:
 		return nil, errors.New(`can't find it`)
 	}
@@ -166,11 +172,11 @@ func (m *Query) UnmarshalJSON(data []byte) (err error) {
 }
 
 //func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error)
-func (qj Query) ToSQL() (sqlizer sq.Sqlizer, err error) {
+func (qj Query) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err error) {
 	if qj.Condition == nil || len(qj.Condition) == 0 {
 		return nil, errors.New(`condition array is empty`)
 	} else if len(qj.Condition) == 1 {
-		return qj.Condition[0].ToSQL()
+		return qj.Condition[0].ToSQL(json2Fields)
 	}
 	operatorAnd := sq.And{}
 	operatorOr := sq.Or{}
@@ -181,9 +187,9 @@ func (qj Query) ToSQL() (sqlizer sq.Sqlizer, err error) {
 		case nil:
 			err = errors.New(`not supported nil format`)
 		case QueryItem:
-			curentSqlizer, err = pred.ToSQL()
+			curentSqlizer, err = pred.ToSQL(json2Fields)
 		case Query:
-			curentSqlizer, err = pred.ToSQL()
+			curentSqlizer, err = pred.ToSQL(json2Fields)
 		default:
 			errors.New(`not supported type`)
 		}

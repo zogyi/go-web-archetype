@@ -424,7 +424,7 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	var sqlizer, querySqlizer sq.Sqlizer
 	var err error
 
-	if querySqlizer, err = extraQuery.Query.ToSQL(); err != nil {
+	if querySqlizer, err = extraQuery.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 		panic(err)
 	}
 

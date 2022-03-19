@@ -99,7 +99,7 @@ func getQuery() (query Query,  err error){
 	  "connector": "OR",
 	  "conditions": [
 	    {
-	      "field": "X",
+	      "field": "field1",
 	      "value": "5",
 	      "operator": "gt"
 	    },
@@ -107,7 +107,7 @@ func getQuery() (query Query,  err error){
 	      "connector": "OR",
 	      "conditions": [
 	        {
-	          "field": "Y",
+	          "field": "field2",
 	          "value": "%b%",
 	          "operator": "eq"
 	        }
