@@ -63,7 +63,7 @@ func (ob *OrderBy) ToSql() string {
 }
 
 type QueryWrapper struct {
-	Query   `json:"query"`
+	Query 	Query   `json:"query"`
 	GroupBy []string  `json:"groupBy"`
 	OrderBy []OrderBy `json:"orderBy"`
 }
@@ -424,7 +424,7 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	var sqlizer, querySqlizer sq.Sqlizer
 	var err error
 
-	if querySqlizer, err = extraQuery.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+	if querySqlizer, err = extraQuery.Query.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 		panic(err)
 	}
 
