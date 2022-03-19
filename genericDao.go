@@ -14,31 +14,14 @@ import (
 	"strings"
 	"time"
 )
+
 type Operation string
 
-const(
+const (
 	Insert Operation = `insert`
 	Update Operation = `update`
 	Delete Operation = `delete`
 	Select Operation = `select`
-)
-type QueryOperator string
-
-const (
-	QPEq     QueryOperator = `eq`
-	QPEqSmb  QueryOperator = `=`
-	QPGt     QueryOperator = `gt`
-	QPGtSmb  QueryOperator = `>`
-	QPLt     QueryOperator = `lt`
-	QPLtSmb  QueryOperator = `<`
-	QPGte    QueryOperator = `gte`
-	QPGteSmb QueryOperator = `>=`
-	QPLte    QueryOperator = `lte`
-	QPLteSmb QueryOperator = `<=`
-	QPLike   QueryOperator = `like`
-	QPIs	 QueryOperator = `is`
-	QPIsNot  QueryOperator = `is not`
-	QPIn 	 QueryOperator = `in`
 )
 
 type CommonFields struct {
@@ -50,16 +33,18 @@ type CommonFields struct {
 }
 
 type CommonDel struct {
-	Del        null.Bool       `json:"-" db:"del" archType:"autoFill"`
+	Del null.Bool `json:"-" db:"del" archType:"autoFill"`
 }
 
 //TODO: 1. extract the field and columns mapping and save into a map
 
 type OrderByType string
+
 const (
 	ASC  OrderByType = `ASC`
 	DESC OrderByType = `DESC`
 )
+
 type OrderBy struct {
 	JSONFields []string    `json:"fields"`
 	columns    []string    `json:"-"`
@@ -71,17 +56,16 @@ func (ob *OrderBy) setColumn(columns []string) {
 }
 
 func (ob *OrderBy) ToSql() string {
-	if ob.columns != nil && len(ob.columns) > 0 && strings.TrimSpace(string(ob.OrderType)) != ``{
+	if ob.columns != nil && len(ob.columns) > 0 && strings.TrimSpace(string(ob.OrderType)) != `` {
 		return fmt.Sprintf(`%s %s`, strings.Join(ob.columns, `,`), ob.OrderType)
 	}
 	return ``
 }
 
 type QueryWrapper struct {
-	And   	[]QueryItem       	`json:"and"`
-	Or 	  	[]QueryItem 	    `json:"or"`
-	GroupBy	[]string 			`json:"groupBy"`
-	OrderBy []OrderBy			`json:"orderBy"`
+	Query   `json:"query"`
+	GroupBy []string  `json:"groupBy"`
+	OrderBy []OrderBy `json:"orderBy"`
 }
 
 type ExtraQueryWrapper struct {
@@ -97,7 +81,7 @@ func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper {
 const (
 	FixedColumnCreateBy string = `create_by`
 	FixedColumnUpdateBy string = `update_by`
-	FixedColumnDel	    string = `del`
+	FixedColumnDel      string = `del`
 	TagArchType         string = `archType`
 	TagPrimaryKey       string = `primaryKey`
 	TagAutoFilled       string = `autoFill`
@@ -136,7 +120,7 @@ func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 		strFieldInfo.fieldInfos = make(map[string]fieldInfo)
 	}
 	if strFieldInfo.jsonFieldInfos == nil {
-		strFieldInfo.jsonFieldInfos = make(map[string] fieldInfo)
+		strFieldInfo.jsonFieldInfos = make(map[string]fieldInfo)
 	}
 	if strFieldInfo.autoFilledFields == nil {
 		strFieldInfo.autoFilledFields = make(map[string]fieldInfo)
@@ -144,7 +128,7 @@ func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 	strFieldInfo.fieldInfos[fInfo.Field] = fInfo
 	strFieldInfo.jsonFieldInfos[fInfo.JSONField] = fInfo
 	if fInfo.IsPrimaryKey {
-		if (fieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField{
+		if (fieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField {
 			panic(fmt.Sprintf(`the field set as primary key can't more than 1, the existing primary key is %s and the new primary key is %s`, strFieldInfo.primaryKey.TableField, fInfo.TableField))
 		}
 		strFieldInfo.primaryKey = fInfo
@@ -182,21 +166,19 @@ func (gd *GenericDao) getFieldInfo(structName string, jsonName string) (fieldInf
 	return fieldInfo{}, false
 }
 
-
-func (gd *GenericDao)GetColumns(entity string)(columns []string, exist bool) {
+func (gd *GenericDao) GetColumns(entity string) (columns []string, exist bool) {
 	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
 		return fieldsInfo.GetColumns(), true
 	}
 	return columns, false
 }
 
-func (gd *GenericDao)GetTable(entity string) (string, bool) {
+func (gd *GenericDao) GetTable(entity string) (string, bool) {
 	if table, exist := gd.entityTableMapping[entity]; exist {
 		return table, true
 	}
 	return ``, false
 }
-
 
 func NewGenericDao(db *sqlx.DB) *GenericDao {
 	if db == nil {
@@ -298,7 +280,6 @@ func (gd *GenericDao) Bind(interf interface{}, table string) {
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
-
 func getFieldInfo(field reflect.StructField) fieldInfo {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
@@ -330,13 +311,13 @@ func getFieldInfo(field reflect.StructField) fieldInfo {
 	}
 
 	return fieldInfo{
-		JSONField: jsonField,
-		TableField: tableFiled,
-		Type: field.Type.Name(),
+		JSONField:    jsonField,
+		TableField:   tableFiled,
+		Type:         field.Type.Name(),
 		IsPrimaryKey: isPrimaryKey,
-		AutoFilled: autoFill,
-		Field: field.Name,
-		IsLogicDel: isLogicDel}
+		AutoFilled:   autoFill,
+		Field:        field.Name,
+		IsLogicDel:   isLogicDel}
 }
 
 func (gd *GenericDao) GetById(intf interface{}, id uint64, force bool, result interface{}) error {
@@ -351,7 +332,7 @@ func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force
 	return gd.GetOneWithTx(intf, extraQuery, nil, force, result)
 }
 
-func (gd *GenericDao) GetOneWithTx (intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, force bool, result interface{}) error {
+func (gd *GenericDao) GetOneWithTx(intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, force bool, result interface{}) error {
 	sqlBuilder := gd.TransferToSelectBuilder(intf, extraQuery)
 	sqlQuery, sqlArgs, err := sqlBuilder.ToSql()
 	if err != nil {
@@ -440,28 +421,20 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	}
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
-	eqClause, _ , hasPrimaryKey := gd.Validate(queryObj, Select, extraQuery.CurrentUsername)
-	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
-		selectBuilder = sq.Select(columns...).From(table).Where(eqClause)
-	} else {
-		var extraAnd sq.And
-		var extraOr sq.Or
-		var err error
-		extraAnd, err = gd.addExtraQuery(queryObj, extraQuery, true)
-		if err != nil {
-			panic(err)
-		}
-		extraAnd = append(extraAnd, eqClause)
-		extraOr, err = gd.addExtraQuery(queryObj, extraQuery, false)
-		if err != nil {
-			panic(err)
-		}
-		if extraOr != nil {
-			extraAnd = append(extraAnd, extraOr)
-		}
-		selectBuilder = sq.Select(columns...).From(table).Where(extraAnd)
+	var sqlizer, querySqlizer sq.Sqlizer
+	var err error
+
+	if querySqlizer, err = extraQuery.Query.ToSQL(); err != nil {
+		panic(err)
 	}
+
+	if eqClause, _, _ := gd.Validate(queryObj, Select, extraQuery.CurrentUsername); len(eqClause) > 0 {
+		andSqlizer := sq.And{}
+		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
+		sqlizer = andSqlizer
+	}
+
+	selectBuilder = sq.Select(columns...).From(table).Where(sqlizer)
 	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.Query.GroupBy)
 	selectBuilder = selectBuilder.GroupBy(currentColumns...)
 	subOrderBy := make([]string, 0)
@@ -476,7 +449,7 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	return selectBuilder
 }
 
-func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []string) []string{
+func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []string) []string {
 	structName := reflect.TypeOf(queryObj).Name()
 	columns := make([]string, 0)
 	if mappingStruct, exist := gd.entitiesInfos[structName]; exist {
@@ -487,73 +460,6 @@ func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []stri
 		}
 	}
 	return columns
-}
-
-func (gd *GenericDao) addExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, isAnd bool) ([]sq.Sqlizer, error) {
-	if extraQuery == nil {
-		extraQuery = NewDefaultExtraQueryWrapper()
-	}
-	var extraOperator []sq.Sqlizer
-	currentEntity := reflect.TypeOf(queryObj).Name()
-	structFields := gd.entitiesInfos[currentEntity]
-	for structFields.fieldInfos == nil || len(structFields.fieldInfos) == 0 {
-		return nil, errors.New(`can't find fields mapping for the entity ` + currentEntity)
-	}
-	if extraQuery != nil && extraQuery.Query != nil {
-		var queryItemArray []QueryItem
-		if isAnd {
-			queryItemArray = extraQuery.Query.And
-		} else {
-			queryItemArray = extraQuery.Query.Or
-		}
-		for i := 0; i < len(queryItemArray); i++ {
-			var currentValue interface{}
-			currentOperator := queryItemArray[i].Operator
-			currentJSONFields := strings.TrimSpace(queryItemArray[i].Field)
-			currentValue = queryItemArray[i].Value
-			var currentTableField string
-
-			if fieldInfo, exist := structFields.jsonFieldInfos[currentJSONFields]; exist {
-				currentTableField = fieldInfo.TableField
-			} else {
-				return nil, errors.New(fmt.Sprintf(`can't find field mapping for the entity '%v' and the field '%v'`, currentEntity, currentJSONFields))
-			}
-
-			if currentOperator == QPIn {
-				queryVal := reflect.ValueOf(currentValue)
-				if queryVal.Kind() == reflect.String {
-					currentValue = strings.Split(currentValue.(string), `,`)
-				}
-				inParams := util.InterfaceSlice(currentValue)
-				//if current value is string, then convert it to the string and split the string with comma
-				extraOperator = append(extraOperator, sq.Eq{currentTableField: inParams})
-				//values = append(values, inParams...)
-				continue //TODO: investigation, find a better way to unify the query param, solve the place holder can't generate the params for it
-			}
-
-			if currentOperator == QPEq || currentOperator == QPEqSmb {
-				extraOperator = append(extraOperator, sq.Eq{currentTableField: currentValue})
-			} else if currentOperator == QPGt || currentOperator == QPGtSmb {
-				extraOperator = append(extraOperator, sq.Gt{currentTableField: currentValue})
-			} else if currentOperator == QPLt || currentOperator == QPLtSmb {
-				extraOperator = append(extraOperator, sq.Lt{currentTableField: currentValue})
-			} else if currentOperator == QPGte || currentOperator == QPGteSmb {
-				extraOperator = append(extraOperator, sq.GtOrEq{currentTableField: currentValue})
-			} else if currentOperator == QPLte || currentOperator == QPLteSmb {
-				extraOperator = append(extraOperator, sq.LtOrEq{currentTableField: currentValue})
-			} else if currentOperator == QPLike {
-				currentValue = `%` + fmt.Sprint(currentValue) + `%`
-				extraOperator = append(extraOperator, sq.Like{currentTableField: currentValue})
-			} else if currentOperator == QPIs {
-				extraOperator = append(extraOperator, sq.Eq{currentTableField: currentValue})
-			} else if currentOperator == QPIsNot {
-				extraOperator = append(extraOperator, sq.NotEq{currentTableField: currentValue})
-			} else {
-				return nil, errors.New(fmt.Sprint(`unrecognised operator: `, currentOperator))
-			}
-		}
-	}
-	return extraOperator, nil
 }
 
 func (gd *GenericDao) Update(queryObj interface{}) (sql.Result, error) {
@@ -580,7 +486,7 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(queryObj interface{}, extraQuer
 	eqClause, setMap, hasPrimaryKey := gd.Validate(queryObj, Update, extraQueryWrapper.CurrentUsername)
 	//fields, values := gd.getValidColumnVal(returnResult, Update, extraQueryWrapper)
 	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
+		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 	}
 	sqlQuery, args, err := sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
 	if err != nil {
@@ -609,7 +515,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	if !ok {
 		return nil, errors.New(`can't find the configuration for the type of ` + reflect.TypeOf(queryObj).Name())
 	}
-	_, setMap, _  := gd.Validate(queryObj, Insert, extraQueryWrapper.CurrentUsername)
+	_, setMap, _ := gd.Validate(queryObj, Insert, extraQueryWrapper.CurrentUsername)
 	sqlQuery, sqlArgs, err := sq.Insert(table).SetMap(setMap).ToSql()
 	if err != nil {
 		return nil, err
@@ -654,13 +560,13 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 
-	eqClause, setMap, hasPrimaryKey  := gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
+	eqClause, setMap, hasPrimaryKey := gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
 	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField : eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
+		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
 	}
 
 	var sqlQuery string
-	var sqlArgs  []interface{}
+	var sqlArgs []interface{}
 	var err error
 	if gd.entitiesInfos[entityName].LogicDel {
 		sqlQuery, sqlArgs, err = sq.Update(table).Where(eqClause).SetMap(setMap).ToSql()
@@ -683,7 +589,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	return err
 }
 
-func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
+func (gd *GenericDao) Validate(queryObj interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
 	intfType := reflect.TypeOf(queryObj)
 	intfVal := reflect.ValueOf(queryObj)
 	//whereClause := sq.Eq{}
@@ -733,14 +639,18 @@ func (gd *GenericDao)Validate (queryObj interface{}, operation Operation, execut
 				continue
 			}
 			if strings.ToLower(filedCfg.TableField) == FixedColumnDel {
-				if operation != Insert {eqClause[filedCfg.TableField] = null.BoolFrom(false)}
-				if operation == Delete {setMap[filedCfg.TableField] = null.BoolFrom(true)}
+				if operation != Insert {
+					eqClause[filedCfg.TableField] = null.BoolFrom(false)
+				}
+				if operation == Delete {
+					setMap[filedCfg.TableField] = null.BoolFrom(true)
+				}
 				continue
 			}
 		}
 		if filedCfg.IsPrimaryKey {
 			primaryKeyValid = !crtFiledVal.IsZero()
-			if operation != Insert && primaryKeyValid{
+			if operation != Insert && primaryKeyValid {
 				eqClause[filedCfg.TableField] = crtFiledVal.Interface()
 			}
 			if operation == Insert && primaryKeyValid && filedCfg.AutoFilled {

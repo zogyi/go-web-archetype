@@ -1,6 +1,7 @@
 package go_web_archetype
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/log"
@@ -93,22 +94,51 @@ func TestGenericDao_Insert(t *testing.T) {
 
 }
 
+func getQuery() (query Query,  err error){
+	jsonString := `	{
+	  "connector": "OR",
+	  "conditions": [
+	    {
+	      "field": "X",
+	      "value": "5",
+	      "operator": "gt"
+	    },
+	    {
+	      "connector": "OR",
+	      "conditions": [
+	        {
+	          "field": "Y",
+	          "value": "%b%",
+	          "operator": "eq"
+	        }
+	      ]
+	    }
+	  ]
+	}`
+	err = json.Unmarshal([]byte(jsonString), &query)
+	return query, nil
+}
+
+
 func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 	dao := initGenericDao()
 	queryWrapper := NewDefaultExtraQueryWrapper()
 	item := TestStruct1{
-		//Id: null.IntFrom(1),
+		Id: null.IntFrom(1),
 		//Field1: null.StringFrom(`升级一下是试试看 `),
 		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
 	}
-	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "id", Operator: `in`, Value: []int{1, 2, 3, 4}})
+	query, err := getQuery()
+	fmt.Println(err)
+	fmt.Println(query)
+	queryWrapper.Query = &QueryWrapper{Query: query}
 	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
 	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
 	////queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
 	//queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
 	//queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
 	result := make([]TestStruct1, 0)
-	err := dao.SelectWithExtraQuery(item, queryWrapper, &result)
+	err = dao.SelectWithExtraQuery(item, queryWrapper, &result)
 	fmt.Println(result)
 	//fmt.Println(result.RowsAffected())
 	fmt.Println(err)
@@ -148,7 +178,11 @@ func BenchmarkGenericDao_TransferToSelectBuilder(b *testing.B) {
 	dao := initGenericDao()
 	dao.Bind(TestStruct1{}, `test`)
 	queryWrapper := NewDefaultExtraQueryWrapper()
-	queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field4", Value: `1 or 2 = 2`, Operator: `eq`})
+	query, err := getQuery()
+	if err != nil {
+		panic(err)
+	}
+	queryWrapper.Query = &QueryWrapper{Query: query}
 	for n := 0; n < b.N; n++ {
 		item := TestStruct1{Field1: null.StringFrom(`我是谁` + strconv.Itoa(n))}
 		dao.InsertWithExtraQuery(item, queryWrapper)

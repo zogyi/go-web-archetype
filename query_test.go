@@ -29,7 +29,7 @@ func TestToSql(t *testing.T) {
 	}`
 	var conn Connector
 	fmt.Println(conn)
-	test := QueryJSON{}
+	test := Query{}
 	err := json.Unmarshal([]byte(jsonString), &test)
 	fmt.Println(err)
 	fmt.Println(test)

@@ -10,12 +10,31 @@ import (
 	"strings"
 )
 
+type QueryOperator string
+
+const (
+	QPEq     QueryOperator = `eq`
+	QPEqSmb  QueryOperator = `=`
+	QPGt     QueryOperator = `gt`
+	QPGtSmb  QueryOperator = `>`
+	QPLt     QueryOperator = `lt`
+	QPLtSmb  QueryOperator = `<`
+	QPGte    QueryOperator = `gte`
+	QPGteSmb QueryOperator = `>=`
+	QPLte    QueryOperator = `lte`
+	QPLteSmb QueryOperator = `<=`
+	QPLike   QueryOperator = `like`
+	QPIs     QueryOperator = `is`
+	QPIsNot  QueryOperator = `is not`
+	QPIn     QueryOperator = `in`
+)
+
 type SqlTranslate interface {
-	ToSQL()(sq.Sqlizer, error)
+	ToSQL() (sq.Sqlizer, error)
 }
 
 type QueryItem struct {
-	Field    string        `json:"field"`
+	Field    string        `json:"field"` //JSON field
 	Operator QueryOperator `json:"operator"`
 	Value    interface{}   `json:"value"`
 }
@@ -48,7 +67,7 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error){
+func (qi QueryItem) ToSQL() (sqlizer sq.Sqlizer, err error) {
 	switch qi.Operator {
 	case QPIn:
 		currentValue := qi.Value
@@ -58,14 +77,16 @@ func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error){
 		}
 		inParams := util.InterfaceSlice(currentValue)
 		return sq.Eq{qi.Field: inParams}, nil
-	case QPEq,QPEqSmb:
+	case QPEq, QPEqSmb:
 		return sq.Eq{qi.Field: qi.Value}, nil
-	case QPGt,QPGtSmb:
+	case QPGt, QPGtSmb:
 		return sq.Gt{qi.Field: qi.Value}, nil
-	case QPLt,QPLtSmb:
+	case QPLt, QPLtSmb:
 		return sq.Lt{qi.Field: qi.Value}, nil
-	case QPGte,QPGteSmb:
+	case QPGte, QPGteSmb:
 		return sq.GtOrEq{qi.Field: qi.Value}, nil
+	case QPLte, QPLteSmb:
+		return sq.LtOrEq{qi.Field: qi.Value}, nil
 	case QPLike:
 		qi.Value = `%` + fmt.Sprint(qi.Value) + `%`
 		return sq.Like{qi.Field: qi.Value}, nil
@@ -78,10 +99,9 @@ func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error){
 	}
 }
 
-
 type Connector string
 
-func (c *Connector) UnmarshalJSON(data []byte)(err error) {
+func (c *Connector) UnmarshalJSON(data []byte) (err error) {
 	var currentStr string
 	if err := json.Unmarshal(data, &currentStr); err != nil {
 		return err
@@ -101,12 +121,12 @@ const (
 	OR  Connector = `OR`
 )
 
-type QueryJSON struct {
-	Operator Connector		 `json:"connector"`
+type Query struct {
+	Operator  Connector      `json:"connector"`
 	Condition []SqlTranslate `json:"conditions"`
 }
 
-func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
+func (m *Query) UnmarshalJSON(data []byte) (err error) {
 	var queryJSONRawMsg map[string]*json.RawMessage
 	if err := json.Unmarshal(data, &queryJSONRawMsg); err != nil {
 		return err
@@ -128,7 +148,7 @@ func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
 			for _, item := range conditionsRawData {
 				var queryItem QueryItem
 				if err := json.Unmarshal(*item, &queryItem); err != nil {
-					var queryJSON QueryJSON
+					var queryJSON Query
 					if err = json.Unmarshal(*item, &queryJSON); err != nil {
 						return err
 					} else {
@@ -146,7 +166,7 @@ func (m *QueryJSON) UnmarshalJSON(data []byte) (err error) {
 }
 
 //func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error)
-func (qj QueryJSON)ToSQL()(sqlizer sq.Sqlizer, err error) {
+func (qj Query) ToSQL() (sqlizer sq.Sqlizer, err error) {
 	if qj.Condition == nil || len(qj.Condition) == 0 {
 		return nil, errors.New(`condition array is empty`)
 	} else if len(qj.Condition) == 1 {
@@ -162,7 +182,7 @@ func (qj QueryJSON)ToSQL()(sqlizer sq.Sqlizer, err error) {
 			err = errors.New(`not supported nil format`)
 		case QueryItem:
 			curentSqlizer, err = pred.ToSQL()
-		case QueryJSON:
+		case Query:
 			curentSqlizer, err = pred.ToSQL()
 		default:
 			errors.New(`not supported type`)
