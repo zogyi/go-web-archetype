@@ -44,7 +44,7 @@ func initGenericDao() *GenericDao {
 //}
 
 func TestGenericDao_TransferToSelectBuilder(t *testing.T) {
-	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field4", Value: `1`, Operator: `eq`})
+	//queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field4", Value: `1`, Operator: `eq`})
 
 	//fmt.Println(reflect.TypeOf(result).Kind())
 	//fmt.Println(result)
@@ -131,12 +131,12 @@ func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 	query, err := getQuery()
 	fmt.Println(err)
 	fmt.Println(query)
-	queryWrapper.Query = &QueryWrapper{Query: query}
-	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
-	//queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
-	////queryWrapper.Query.And = append(queryWrapper.Query.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
-	//queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
-	//queryWrapper.Query.Or = append(queryWrapper.Query.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
+	queryWrapper.QueryExtension = &QueryExtension{Query: query}
+	//queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
+	//queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
+	////queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
+	//queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
+	//queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
 	result := make([]TestStruct1, 0)
 	err = dao.SelectWithExtraQuery(item, queryWrapper, &result)
 	fmt.Println(result)
@@ -182,7 +182,7 @@ func BenchmarkGenericDao_TransferToSelectBuilder(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
-	queryWrapper.Query = &QueryWrapper{Query: query}
+	queryWrapper.QueryExtension = &QueryExtension{Query: query}
 	for n := 0; n < b.N; n++ {
 		item := TestStruct1{Field1: null.StringFrom(`我是谁` + strconv.Itoa(n))}
 		dao.InsertWithExtraQuery(item, queryWrapper)

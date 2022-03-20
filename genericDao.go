@@ -15,54 +15,7 @@ import (
 	"time"
 )
 
-type Operation string
-
-const (
-	Insert Operation = `insert`
-	Update Operation = `update`
-	Delete Operation = `delete`
-	Select Operation = `select`
-)
-
-type CommonFields struct {
-	Id         null.Int        `json:"id" archType:"primaryKey"`
-	CreateTime util.MyNullTime `json:"createTime" db:"create_time" archType:"autoFill"`
-	CreatorBy  null.String     `json:"createBy" db:"create_by" archType:"autoFill"`
-	UpdateTime util.MyNullTime `json:"updateTime" db:"update_time" archType:"autoFill"`
-	UpdateBy   null.String     `json:"updateBy" db:"update_by" archType:"autoFill"`
-}
-
-type CommonDel struct {
-	Del null.Bool `json:"-" db:"del" archType:"autoFill"`
-}
-
-//TODO: 1. extract the field and columns mapping and save into a map
-
-type OrderByType string
-
-const (
-	ASC  OrderByType = `ASC`
-	DESC OrderByType = `DESC`
-)
-
-type OrderBy struct {
-	JSONFields []string    `json:"fields"`
-	columns    []string    `json:"-"`
-	OrderType  OrderByType `json:"orderType"`
-}
-
-func (ob *OrderBy) setColumn(columns []string) {
-	ob.columns = columns
-}
-
-func (ob *OrderBy) ToSql() string {
-	if ob.columns != nil && len(ob.columns) > 0 && strings.TrimSpace(string(ob.OrderType)) != `` {
-		return fmt.Sprintf(`%s %s`, strings.Join(ob.columns, `,`), ob.OrderType)
-	}
-	return ``
-}
-
-type QueryWrapper struct {
+type QueryExtension struct {
 	Query 	Query   `json:"query"`
 	GroupBy []string  `json:"groupBy"`
 	OrderBy []OrderBy `json:"orderBy"`
@@ -71,11 +24,11 @@ type QueryWrapper struct {
 type ExtraQueryWrapper struct {
 	CurrentUsername string
 	Pagination      *util.Pagination
-	Query           *QueryWrapper
+	QueryExtension  *QueryExtension
 }
 
 func NewDefaultExtraQueryWrapper() *ExtraQueryWrapper {
-	return &ExtraQueryWrapper{Pagination: &util.Pagination{PageSize: 10, CurrentPage: 0}, Query: &QueryWrapper{}}
+	return &ExtraQueryWrapper{Pagination: &util.Pagination{PageSize: 10, CurrentPage: 0}, QueryExtension: &QueryExtension{}}
 }
 
 const (
@@ -286,12 +239,14 @@ func getFieldInfo(field reflect.StructField) fieldInfo {
 	var isPrimaryKey, autoFill, isLogicDel bool
 	if dbTag == `` {
 		tableFiled = strings.ToLower(field.Name)
-		if tableFiled == FixedColumnDel {
-			isLogicDel = true
-		}
-	} else if dbTag != `-` {
+	} else {
 		tableFiled = dbTag
 	}
+
+	if tableFiled == FixedColumnDel {
+		isLogicDel = true
+	}
+
 	jsonTag := field.Tag.Get(`json`)
 	if strings.TrimSpace(jsonTag) != `` || strings.TrimSpace(jsonTag) != `-` {
 		jsonField = jsonTag
@@ -421,24 +376,37 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	}
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
-	var sqlizer, querySqlizer sq.Sqlizer
-	var err error
+	var (
+		sqlizer, querySqlizer sq.Sqlizer
+		err error
+		eqClause sq.Eq
+	)
 
-	if querySqlizer, err = extraQuery.Query.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
-		panic(err)
+	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, Query{}) {
+		if querySqlizer, err = extraQuery.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+			panic(err)
+		}
 	}
 
-	if eqClause, _, _ := gd.Validate(queryObj, Select, extraQuery.CurrentUsername); len(eqClause) > 0 {
+	eqClause, _, _ = gd.Validate(queryObj, Select, extraQuery.CurrentUsername)
+	if querySqlizer != nil &&  eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
 		sqlizer = andSqlizer
+	} else if  querySqlizer == nil &&  eqClause != nil && len(eqClause) > 0 {
+		sqlizer = eqClause
+	} else if querySqlizer != nil && (eqClause == nil || len(eqClause) == 0) {
+		sqlizer = querySqlizer
 	}
 
-	selectBuilder = sq.Select(columns...).From(table).Where(sqlizer)
-	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.Query.GroupBy)
+	selectBuilder = sq.Select(columns...).From(table)
+	if sqlizer != nil {
+		selectBuilder = selectBuilder.Where(sqlizer)
+	}
+	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.QueryExtension.GroupBy)
 	selectBuilder = selectBuilder.GroupBy(currentColumns...)
 	subOrderBy := make([]string, 0)
-	for _, orderByItem := range extraQuery.Query.OrderBy {
+	for _, orderByItem := range extraQuery.QueryExtension.OrderBy {
 		orderByItem.setColumn(gd.jsonFields2Columns(queryObj, orderByItem.JSONFields))
 		crtOrderSQL := orderByItem.ToSql()
 		if strings.TrimSpace(crtOrderSQL) != `` {
@@ -560,18 +528,39 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 
-	eqClause, setMap, hasPrimaryKey := gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
-	if hasPrimaryKey {
-		eqClause = map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
+	var (
+		sqlizer, querySqlizer sq.Sqlizer
+		err error
+		setMap map[string]interface{}
+		eqClause sq.Eq
+		)
+
+	if extraQueryWrapper.QueryExtension!= nil && !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
+		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+			panic(err)
+		}
+	}
+
+	eqClause, setMap, _ = gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
+	if querySqlizer != nil &&  eqClause != nil && len(eqClause) > 0 {
+		andSqlizer := sq.And{}
+		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
+		sqlizer = andSqlizer
+	} else if  querySqlizer == nil &&  eqClause != nil && len(eqClause) > 0 {
+		sqlizer = eqClause
+	} else if querySqlizer != nil && (eqClause == nil || len(eqClause) == 0) {
+		sqlizer = querySqlizer
+	}
+	if querySqlizer == nil && (eqClause == nil || len(eqClause) == 0) {
+		return errors.New(`condition is empty`)
 	}
 
 	var sqlQuery string
 	var sqlArgs []interface{}
-	var err error
 	if gd.entitiesInfos[entityName].LogicDel {
-		sqlQuery, sqlArgs, err = sq.Update(table).Where(eqClause).SetMap(setMap).ToSql()
+		sqlQuery, sqlArgs, err = sq.Update(table).Where(sqlizer).SetMap(setMap).ToSql()
 	} else {
-		sqlQuery, sqlArgs, err = sq.Delete(table).Where(eqClause).ToSql()
+		sqlQuery, sqlArgs, err = sq.Delete(table).Where(sqlizer).ToSql()
 	}
 	//sqlQuery, queryArgs, err := updateBuilder.Where(whereSql, values...).ToSql()
 
