@@ -282,6 +282,10 @@ func (gd *GenericDao) GetById(intf interface{}, id uint64, force bool, result in
 	return gd.Get(queryObj.Elem().Interface(), NewDefaultExtraQueryWrapper(), force, result)
 }
 
+func (gd *GenericDao) GetOne(intf interface{}, result interface{}) error {
+	return gd.Get(intf, nil, false, result)
+}
+
 //GetOne return the pointer of the result object
 func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force bool, result interface{}) error {
 	return gd.GetOneWithTx(intf, extraQuery, nil, force, result)
