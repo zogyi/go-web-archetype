@@ -55,8 +55,12 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 				}
 				break
 			case `value`:
-				if err = json.Unmarshal(*val, &qi.Value); err != nil {
-					return err
+				if val == nil {
+					qi.Value = nil
+				} else {
+					if err = json.Unmarshal(*val, &qi.Value); err != nil {
+						return err
+					}
 				}
 				break
 			default:
@@ -69,7 +73,7 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 
 func (qi QueryItem) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err error) {
 	var column string
-	if fieldInfo, exist := json2Fields[qi.Field]; exist{
+	if fieldInfo, exist := json2Fields[qi.Field]; exist {
 		column = fieldInfo.TableField
 	} else {
 		return nil, errors.New(`can't find the column`)
