@@ -1,17 +1,21 @@
 package go_web_archetype
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestExecutor_SelectList(t *testing.T) {
 	type resultType struct {
 		Id     int    `db:"id"`
 		Field1 string `db:"field1"`
 	}
-	result := make([]resultType, 0)
 	dao := initGenericDao()
 	tx, err := dao.DB().Beginx()
 	defer tx.Rollback()
-	err = selectList(dao.DB(), `select * from test`, []interface{}{}, &result)
-	println(err)
+	db := dao.DB().Unsafe()
+	insertResult, err := insertOrUpdate(db, `insert into test(field1) values(?)`, []interface{}{`test`})
+	fmt.Println(insertResult)
+	fmt.Println(err)
 	tx.Commit()
 }
