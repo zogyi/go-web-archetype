@@ -27,7 +27,7 @@ type TestStruct1 struct {
 
 func initGenericDao() *GenericDao {
 	log.InitLog(``, `debug`)
-	db, err := sqlx.Open(`mysql`, `root:***REMOVED***@tcp(localhost:3306)/test?charset=utf8&parseTime=true`)
+	db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
 	if err != nil {
 		fmt.Println(err)
 		panic(`can't open the database connection`)
@@ -94,7 +94,7 @@ func TestGenericDao_Insert(t *testing.T) {
 
 }
 
-func getQuery() (query Query,  err error){
+func getQuery() (query Query, err error) {
 	jsonString := `	{
 	  "connector": "OR",
 	  "conditions": [
@@ -118,7 +118,6 @@ func getQuery() (query Query,  err error){
 	err = json.Unmarshal([]byte(jsonString), &query)
 	return query, nil
 }
-
 
 func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 	dao := initGenericDao()
