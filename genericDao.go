@@ -16,7 +16,7 @@ import (
 )
 
 type QueryExtension struct {
-	Query 	Query   `json:"query"`
+	Query   Query     `json:"query"`
 	GroupBy []string  `json:"groupBy"`
 	OrderBy []OrderBy `json:"orderBy"`
 }
@@ -96,8 +96,8 @@ func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 
 type entitiesInfo map[string]structInfo
 
-type GenericDao struct {
-	db                 *sqlx.DB
+type GenericDao[T Connection] struct {
+	db                 T
 	bondEntities       []interface{}     //所有的entity
 	entityTableMapping map[string]string //entity与table名字之间的映射
 	entitiesInfos      entitiesInfo      //entity field所有的表单的映射
@@ -108,7 +108,7 @@ type GenericDao struct {
 	//commonFields 	   util.CommonFields
 }
 
-func (gd *GenericDao) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
+func (gd *GenericDao[T]) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
 	if structInfo, exist := gd.entitiesInfos[structName]; exist {
 		for _, fieldInfo := range structInfo.fieldInfos {
 			if fieldInfo.JSONField == jsonName {
@@ -119,21 +119,21 @@ func (gd *GenericDao) getFieldInfo(structName string, jsonName string) (fieldInf
 	return fieldInfo{}, false
 }
 
-func (gd *GenericDao) GetColumns(entity string) (columns []string, exist bool) {
+func (gd *GenericDao[T]) GetColumns(entity string) (columns []string, exist bool) {
 	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
 		return fieldsInfo.GetColumns(), true
 	}
 	return columns, false
 }
 
-func (gd *GenericDao) GetTable(entity string) (string, bool) {
+func (gd *GenericDao[T]) GetTable(entity string) (string, bool) {
 	if table, exist := gd.entityTableMapping[entity]; exist {
 		return table, true
 	}
 	return ``, false
 }
 
-func NewGenericDao(db *sqlx.DB) *GenericDao {
+func NewGenericDao(db *sqlx.DB) *GenericDao[*sqlx.DB] {
 	if db == nil {
 		panic(`the pointer of database is nil`)
 	}
@@ -141,21 +141,21 @@ func NewGenericDao(db *sqlx.DB) *GenericDao {
 		zap.L().Error(`can't connect to the database`)
 		panic(`can't connect to the database`)
 	}
-	return &GenericDao{db: db}
+	return &GenericDao[*sqlx.DB]{db: db}
 }
 
-func NewDaoWithDefaultCustomerType(db *sqlx.DB) *GenericDao {
+func NewDaoWithDefaultCustomerType(db *sqlx.DB) *GenericDao[*sqlx.DB] {
 	dao := NewGenericDaoWithCustomerType(db, CommonFields{}, CommonDel{})
 	return dao
 }
 
-func NewGenericDaoWithCustomerType(db *sqlx.DB, types ...interface{}) *GenericDao {
+func NewGenericDaoWithCustomerType(db *sqlx.DB, types ...interface{}) *GenericDao[*sqlx.DB] {
 	dao := NewGenericDao(db)
 	dao.AddCustomType(types...)
 	return dao
 }
 
-func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao {
+func (gd *GenericDao[T]) AddCustomType(types ...interface{}) *GenericDao[T] {
 	//reflect.TypeOf(types).Name()
 	if gd.entitiesInfos == nil {
 		gd.entitiesInfos = entitiesInfo{}
@@ -179,7 +179,7 @@ func (gd *GenericDao) AddCustomType(types ...interface{}) *GenericDao {
 	return gd
 }
 
-func (gd *GenericDao) containCustomType(fieldType reflect.Type) bool {
+func (gd *GenericDao[T]) containCustomType(fieldType reflect.Type) bool {
 	for i := 0; i < len(gd.customType); i++ {
 		if reflect.TypeOf(gd.customType[i]) == fieldType {
 			return true
@@ -188,19 +188,33 @@ func (gd *GenericDao) containCustomType(fieldType reflect.Type) bool {
 	return false
 }
 
-func (gd *GenericDao) DB() *sqlx.DB {
+func (gd *GenericDao[T]) DB() T {
 	return gd.db
 }
 
-func (gd *GenericDao) GetBondEntities() []interface{} {
+func (gd *GenericDao[T]) GetBondEntities() []interface{} {
 	return gd.bondEntities
 }
 
-func (gd *GenericDao) GetEntityTableMapping() map[string]string {
+func (gd *GenericDao[T]) GetEntityTableMapping() map[string]string {
 	return gd.entityTableMapping
 }
 
-func (gd *GenericDao) Bind(interf interface{}, table string) {
+func BeginTx(dao *GenericDao[*sqlx.DB]) (*GenericDao[*sqlx.Tx], error) {
+	if tx, err := dao.DB().Beginx(); err == nil {
+		return &GenericDao[*sqlx.Tx]{
+			db:                 tx,
+			bondEntities:       dao.bondEntities,
+			entityTableMapping: dao.entityTableMapping,
+			entitiesInfos:      dao.entitiesInfos,
+			customType:         dao.customType,
+		}, nil
+	} else {
+		return nil, err
+	}
+}
+
+func (gd *GenericDao[T]) Bind(interf interface{}, table string) {
 	crtIrf := reflect.TypeOf(interf)
 	if crtIrf.Kind() != reflect.Struct {
 		panic(`only struct is ok`)
@@ -275,44 +289,31 @@ func getFieldInfo(field reflect.StructField) fieldInfo {
 		IsLogicDel:   isLogicDel}
 }
 
-func (gd *GenericDao) GetById(intf interface{}, id uint64, force bool, result interface{}) error {
+func (gd *GenericDao[T]) GetById(intf interface{}, id uint64, force bool, result interface{}) error {
 	objType := reflect.TypeOf(intf)
 	queryObj := reflect.New(objType)
 	queryObj.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(int64(id))))
 	return gd.Get(queryObj.Elem().Interface(), NewDefaultExtraQueryWrapper(), force, result)
 }
 
-func (gd *GenericDao) GetOne(intf interface{}, result interface{}) error {
+func (gd *GenericDao[T]) GetOne(intf interface{}, result interface{}) error {
 	return gd.Get(intf, nil, false, result)
 }
 
-//GetOne return the pointer of the result object
-func (gd *GenericDao) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force bool, result interface{}) error {
-	return gd.GetOneWithTx(intf, extraQuery, nil, force, result)
-}
-
-func (gd *GenericDao) GetOneWithTx(intf interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, force bool, result interface{}) error {
+func (gd *GenericDao[T]) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force bool, result interface{}) error {
 	sqlBuilder := gd.TransferToSelectBuilder(intf, extraQuery)
 	sqlQuery, sqlArgs, err := sqlBuilder.ToSql()
 	if err != nil {
 		return err
 	}
-	daoExecutor := daoExecutor{gd.db, tx}
-	return daoExecutor.get(sqlQuery, sqlArgs, result)
+	return get(gd.db, sqlQuery, sqlArgs, result)
 }
 
-func (gd *GenericDao) Select(intf interface{}, result interface{}) error {
-	return gd.SelectWithExtraQuery(intf, nil, result)
+func (gd *GenericDao[T]) Select(intf interface{}, result interface{}) error {
+	return gd.SelectWithExtraQuery(intf, NewDefaultExtraQueryWrapper(), result)
 }
 
-func (gd *GenericDao) SelectWithExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, result interface{}) error {
-	return gd.SelectWithExtraQueryAndTx(queryObj, extraQuery, nil, result)
-}
-
-func (gd *GenericDao) SelectWithExtraQueryAndTx(queryObj interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, result interface{}) error {
-	if extraQuery == nil {
-		extraQuery = NewDefaultExtraQueryWrapper()
-	}
+func (gd *GenericDao[T]) SelectWithExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, result interface{}) error {
 	if reflect.TypeOf(queryObj).Kind() != reflect.Struct {
 		return errors.New(`the interface should be a struct non of pointer`)
 	}
@@ -321,14 +322,13 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(queryObj interface{}, extraQuery
 		return errors.New(`no mapping found for the interface` + reflect.TypeOf(queryObj).Name())
 	}
 
-	executor := daoExecutor{DB: gd.db, Tx: tx}
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	countSql, sqlArgs, err := sq.Select("count(*)").FromSelect(builder, `t1`).ToSql()
 	if err != nil {
 		return errors.New(`error occurred when generating the count sql`)
 	}
 	var totalCount uint64
-	if err := executor.get(countSql, sqlArgs, &totalCount); err != nil {
+	if err := get(gd.DB(), countSql, sqlArgs, &totalCount); err != nil {
 		return err
 	}
 	extraQuery.Pagination.Total = totalCount
@@ -339,18 +339,18 @@ func (gd *GenericDao) SelectWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	if err != nil {
 		return err
 	}
-	return executor.selectList(sqlQuery, sqlArgs, result)
+	return selectList(gd.DB(), sqlQuery, sqlArgs, result)
 }
 
-func (gd *GenericDao) SelectList(queryObj interface{}, result interface{}) error {
-	return gd.SelectListWithExtraQuery(queryObj, nil, result)
+func (gd *GenericDao[T]) SelectList(queryObj interface{}, result interface{}) error {
+	return gd.SelectListWithExtraQuery(queryObj, NewDefaultExtraQueryWrapper(), result)
 }
 
-func (gd *GenericDao) SelectListWithExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, result interface{}) error {
+func (gd *GenericDao[T]) SelectListWithExtraQuery(queryObj interface{}, extraQuery *ExtraQueryWrapper, result interface{}) error {
 	return gd.SelectListWithExtraQueryAndTx(queryObj, extraQuery, nil, result)
 }
 
-func (gd *GenericDao) SelectListWithExtraQueryAndTx(queryObj interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, result interface{}) error {
+func (gd *GenericDao[T]) SelectListWithExtraQueryAndTx(queryObj interface{}, extraQuery *ExtraQueryWrapper, tx *sqlx.Tx, result interface{}) error {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
@@ -362,16 +362,15 @@ func (gd *GenericDao) SelectListWithExtraQueryAndTx(queryObj interface{}, extraQ
 		return errors.New(`no mapping found for the interface` + reflect.TypeOf(queryObj).Name())
 	}
 
-	executor := daoExecutor{DB: gd.db, Tx: tx}
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	sqlQuery, sqlArgs, err := sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 	if err != nil {
 		return err
 	}
-	return executor.selectList(sqlQuery, sqlArgs, result)
+	return selectList(gd.db, sqlQuery, sqlArgs, result)
 }
 
-func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
+func (gd *GenericDao[T]) TransferToSelectBuilder(queryObj interface{}, extraQuery *ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if extraQuery == nil {
 		extraQuery = NewDefaultExtraQueryWrapper()
 	}
@@ -382,8 +381,8 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	table := gd.entityTableMapping[entityName]
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
-		err error
-		eqClause sq.Eq
+		err                   error
+		eqClause              sq.Eq
 	)
 
 	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, Query{}) {
@@ -393,11 +392,11 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	}
 
 	eqClause, _, _ = gd.Validate(queryObj, Select, extraQuery.CurrentUsername)
-	if querySqlizer != nil &&  eqClause != nil && len(eqClause) > 0 {
+	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
 		sqlizer = andSqlizer
-	} else if  querySqlizer == nil &&  eqClause != nil && len(eqClause) > 0 {
+	} else if querySqlizer == nil && eqClause != nil && len(eqClause) > 0 {
 		sqlizer = eqClause
 	} else if querySqlizer != nil && (eqClause == nil || len(eqClause) == 0) {
 		sqlizer = querySqlizer
@@ -421,7 +420,7 @@ func (gd *GenericDao) TransferToSelectBuilder(queryObj interface{}, extraQuery *
 	return selectBuilder
 }
 
-func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []string) []string {
+func (gd *GenericDao[T]) jsonFields2Columns(queryObj interface{}, jsonFields []string) []string {
 	structName := reflect.TypeOf(queryObj).Name()
 	columns := make([]string, 0)
 	if mappingStruct, exist := gd.entitiesInfos[structName]; exist {
@@ -434,21 +433,13 @@ func (gd *GenericDao) jsonFields2Columns(queryObj interface{}, jsonFields []stri
 	return columns
 }
 
-func (gd *GenericDao) Update(queryObj interface{}) (sql.Result, error) {
-	return gd.UpdateWithExtraQuery(queryObj, nil)
-}
-
-func (gd *GenericDao) UpdateWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) (sql.Result, error) {
-	//tableName := entityTableMapping[reflect.TypeOf(intf).String()]
-	return gd.UpdateWithExtraQueryWithTx(queryObj, extraQueryWrapper, nil)
+func (gd *GenericDao[T]) Update(queryObj interface{}) (sql.Result, error) {
+	return gd.UpdateWithExtraQuery(queryObj, NewDefaultExtraQueryWrapper())
 }
 
 //update remove the common fields
-func (gd *GenericDao) UpdateWithExtraQueryWithTx(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (sql.Result, error) {
+func (gd *GenericDao[T]) UpdateWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) (sql.Result, error) {
 	//tableName := entityTableMapping[reflect.TypeOf(intf).String()]
-	if extraQueryWrapper == nil {
-		extraQueryWrapper = NewDefaultExtraQueryWrapper()
-	}
 	if reflect.TypeOf(queryObj).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -464,22 +455,14 @@ func (gd *GenericDao) UpdateWithExtraQueryWithTx(queryObj interface{}, extraQuer
 	if err != nil {
 		return nil, err
 	}
-	executor := daoExecutor{DB: gd.db, Tx: tx}
-	return executor.insertOrUpdate(sqlQuery, args)
+	return execute(gd.DB(), sqlQuery, args)
 }
 
-func (gd *GenericDao) Insert(queryObj interface{}) (interface{}, error) {
-	return gd.InsertWithExtraQuery(queryObj, nil)
+func (gd *GenericDao[T]) Insert(queryObj interface{}) (interface{}, error) {
+	return gd.InsertWithExtraQuery(queryObj, NewDefaultExtraQueryWrapper())
 }
 
-func (gd *GenericDao) InsertWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) (interface{}, error) {
-	return gd.InsertWithExtraQueryAndTx(queryObj, extraQueryWrapper, nil)
-}
-
-func (gd *GenericDao) InsertWithExtraQueryAndTx(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) (interface{}, error) {
-	if extraQueryWrapper == nil {
-		extraQueryWrapper = NewDefaultExtraQueryWrapper()
-	}
+func (gd *GenericDao[T]) InsertWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) (interface{}, error) {
 	if reflect.TypeOf(queryObj).Kind() != reflect.Struct {
 		panic(`the interface should be a struct non of pointer`)
 	}
@@ -492,8 +475,7 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	if err != nil {
 		return nil, err
 	}
-	executor := daoExecutor{DB: gd.db, Tx: tx}
-	result, err := executor.insertOrUpdate(sqlQuery, sqlArgs)
+	result, err := execute(gd.DB(), sqlQuery, sqlArgs)
 
 	if err != nil {
 		return nil, err
@@ -514,43 +496,36 @@ func (gd *GenericDao) InsertWithExtraQueryAndTx(queryObj interface{}, extraQuery
 }
 
 // logical delete
-func (gd *GenericDao) Delete(queryObj interface{}) error {
-	return gd.DeleteWithExtraQuery(queryObj, nil)
+func (gd *GenericDao[T]) Delete(queryObj interface{}) error {
+	return gd.DeleteWithExtraQuery(queryObj, NewDefaultExtraQueryWrapper())
 }
 
-func (gd *GenericDao) DeleteWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) error {
-	return gd.DeleteWithExtraQueryAndTx(queryObj, extraQueryWrapper, nil)
-}
-
-func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper, tx *sqlx.Tx) error {
+func (gd *GenericDao[T]) DeleteWithExtraQuery(queryObj interface{}, extraQueryWrapper *ExtraQueryWrapper) error {
 	if reflect.TypeOf(queryObj).Kind() != reflect.Struct {
 		return errors.New(`the interface should be a struct non of pointer`)
-	}
-	if extraQueryWrapper == nil {
-		extraQueryWrapper = NewDefaultExtraQueryWrapper()
 	}
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
-		err error
-		setMap map[string]interface{}
-		eqClause sq.Eq
-		)
+		err                   error
+		setMap                map[string]interface{}
+		eqClause              sq.Eq
+	)
 
-	if extraQueryWrapper.QueryExtension!= nil && !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
+	if extraQueryWrapper.QueryExtension != nil && !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
 		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
 	}
 
 	eqClause, setMap, _ = gd.Validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
-	if querySqlizer != nil &&  eqClause != nil && len(eqClause) > 0 {
+	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
 		sqlizer = andSqlizer
-	} else if  querySqlizer == nil &&  eqClause != nil && len(eqClause) > 0 {
+	} else if querySqlizer == nil && eqClause != nil && len(eqClause) > 0 {
 		sqlizer = eqClause
 	} else if querySqlizer != nil && (eqClause == nil || len(eqClause) == 0) {
 		sqlizer = querySqlizer
@@ -571,10 +546,9 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	if err != nil {
 		return errors.New(`some thing wrong when generating the sql ` + err.Error())
 	}
-	executor := daoExecutor{DB: gd.db, Tx: tx}
 	var sqlResult sql.Result
 	var rows int64
-	if sqlResult, err = executor.insertOrUpdate(sqlQuery, sqlArgs); err == nil {
+	if sqlResult, err = execute(gd.DB(), sqlQuery, sqlArgs); err == nil {
 		if rows, err = sqlResult.RowsAffected(); err == nil && rows <= 0 {
 			return errors.New(`no rows effected`)
 		}
@@ -582,7 +556,7 @@ func (gd *GenericDao) DeleteWithExtraQueryAndTx(queryObj interface{}, extraQuery
 	return err
 }
 
-func (gd *GenericDao) Validate(queryObj interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
+func (gd *GenericDao[T]) Validate(queryObj interface{}, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
 	intfType := reflect.TypeOf(queryObj)
 	intfVal := reflect.ValueOf(queryObj)
 	//whereClause := sq.Eq{}

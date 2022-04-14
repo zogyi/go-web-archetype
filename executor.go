@@ -20,7 +20,7 @@ func get[T Connection](conn T, sqlQuery string, args []interface{}, result inter
 	return conn.Get(result, sqlQuery, args...)
 }
 
-func insertOrUpdate[T Connection](conn T, sqlQuery string, args []interface{}) (result sql.Result, err error) {
+func execute[T Connection](conn T, sqlQuery string, args []interface{}) (result sql.Result, err error) {
 	var statement *sqlx.Stmt
 	if statement, err = conn.Preparex(sqlQuery); err != nil {
 		return

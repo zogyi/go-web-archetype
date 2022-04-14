@@ -5,27 +5,17 @@ import (
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/log"
-	"github.com/***REMOVED***/go-web-archetype/util"
 	"gopkg.in/guregu/null.v3"
 	"strconv"
 	"testing"
-	"time"
 )
 
 type TestStruct1 struct {
-	Id         null.Int        `db:"id" json:"id" archType:"primaryKey,autoFill"`
-	Field1     null.String     `db:"field1" json:"field1"`
-	Field2     null.String     `db:"field2" json:"field2"`
-	Field3     null.String     `db:"field3" json:"field3"`
-	Field4     util.MyNullTime `db:"field4" json:"field4"`
-	Filed5     null.Int        `db:"field5" json:"field5"`
-	CreateBy   null.String     `db:"create_by" json:"createBy" archType:"autoFill"`
-	UpdateBy   null.String     `db:"update_by" json:"updateBy" archType:"autoFill"`
-	CreateTime util.MyNullTime `db:"create_time" json:"createTime" archType:"autoFill"`
-	Del        null.Bool       `db:"del" json:"del"  archType:"autoFill"`
+	Id     null.Int    `db:"id" json:"id" archType:"primaryKey,autoFill"`
+	Field1 null.String `db:"field1" json:"field1"`
 }
 
-func initGenericDao() *GenericDao {
+func initGenericDao() *GenericDao[*sqlx.DB] {
 	log.InitLog(``, `debug`)
 	db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
 	if err != nil {
@@ -53,17 +43,22 @@ func TestGenericDao_TransferToSelectBuilder(t *testing.T) {
 
 func TestGenericDao_Insert(t *testing.T) {
 	dao := initGenericDao()
-	queryWrapper := NewDefaultExtraQueryWrapper()
-	setTime, err := time.Parse(`2006-01-02 15:04:05 -0700 MST`, `2021-09-02 15:04:05 +0800 UTC`)
+	txDao, err := BeginTx(dao)
 	if err != nil {
 		panic(err)
 	}
+	defer txDao.DB().Rollback()
+	queryWrapper := NewDefaultExtraQueryWrapper()
+	//setTime, err := time.Parse(`2006-01-02 15:04:05 -0700 MST`, `2021-09-02 15:04:05 +0800 UTC`)
+	//if err != nil {
+	//	panic(err)
+	//}
 	item1 := TestStruct1{
 		Field1: null.StringFrom(`field1-1`),
-		Field2: null.StringFrom(`field2-1`),
-		Field3: null.StringFrom(`field3-1`),
-		Field4: util.MyNullTime{Time: null.TimeFrom(setTime)},
-		Filed5: null.IntFrom(1),
+		//Field2: null.StringFrom(`field2-1`),
+		//Field3: null.StringFrom(`field3-1`),
+		//Field4: util.MyNullTime{Time: null.TimeFrom(setTime)},
+		//Filed5: null.IntFrom(1),
 	}
 	//item2 := TestStruct1{
 	//	Field1: null.StringFrom(`field1-1`),
@@ -91,6 +86,7 @@ func TestGenericDao_Insert(t *testing.T) {
 	} else {
 		fmt.Println(result)
 	}
+	txDao.DB().Commit()
 
 }
 
@@ -156,11 +152,12 @@ func TestGenericDao_Validate(t *testing.T) {
 	dao := initGenericDao()
 	//queryWrapper := NewDefaultExtraQueryWrapper()
 	item := TestStruct1{
-		Id:         null.IntFrom(123),
-		Field2:     null.StringFrom(`测试删除`),
-		CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
-		Filed5:     null.IntFrom(0),
-		Del:        null.BoolFrom(false)}
+		Id: null.IntFrom(123),
+		//Field2:     null.StringFrom(`测试删除`),
+		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
+		//Filed5:     null.IntFrom(0),
+		//Del:        null.BoolFrom(false)
+	}
 	eqCluase, setMap, _ := dao.Validate(item, Delete, `david`)
 	fmt.Println(eqCluase)
 	fmt.Println(setMap)
