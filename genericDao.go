@@ -293,14 +293,14 @@ func (gd *GenericDao[T]) GetById(intf interface{}, id uint64, force bool, result
 	objType := reflect.TypeOf(intf)
 	queryObj := reflect.New(objType)
 	queryObj.Elem().FieldByName(`Id`).Set(reflect.ValueOf(null.IntFrom(int64(id))))
-	return gd.Get(queryObj.Elem().Interface(), NewDefaultExtraQueryWrapper(), force, result)
+	return gd.GetWithExtraQuery(queryObj.Elem().Interface(), NewDefaultExtraQueryWrapper(), force, result)
 }
 
-func (gd *GenericDao[T]) GetOne(intf interface{}, result interface{}) error {
-	return gd.Get(intf, nil, false, result)
+func (gd *GenericDao[T]) Get(intf interface{}, result interface{}) error {
+	return gd.GetWithExtraQuery(intf, nil, false, result)
 }
 
-func (gd *GenericDao[T]) Get(intf interface{}, extraQuery *ExtraQueryWrapper, force bool, result interface{}) error {
+func (gd *GenericDao[T]) GetWithExtraQuery(intf interface{}, extraQuery *ExtraQueryWrapper, force bool, result interface{}) error {
 	sqlBuilder := gd.TransferToSelectBuilder(intf, extraQuery)
 	sqlQuery, sqlArgs, err := sqlBuilder.ToSql()
 	if err != nil {
