@@ -1,9 +1,6 @@
 package util
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // check if an array contains a specified string
 func stringInSlice(a string, list []string) bool {
@@ -23,6 +20,14 @@ func Map(vs []string, f func(string) string) []string {
 	return vsm
 }
 
-func ArrayToString(a []int, delim string) string {
-	return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
+func ArrayToString[T any](a []T, delim string) string {
+	var result string
+	for index, item := range a {
+		if index == 0 {
+			result = result + fmt.Sprint(item)
+		} else {
+			result = result + delim + fmt.Sprint(item)
+		}
+	}
+	return result
 }

@@ -85,8 +85,12 @@ func (qi QueryItem) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer,
 		if queryVal.Kind() == reflect.String {
 			currentValue = strings.Split(qi.Value.(string), `,`)
 		}
-		inParams := util.InterfaceSlice(currentValue)
-		return sq.Eq{column: inParams}, nil
+		if queryVal.Kind() == reflect.Array || queryVal.Kind() == reflect.Slice {
+			inParams := util.InterfaceSlice(currentValue)
+			return sq.Eq{column: inParams}, nil
+		} else {
+			return nil, errors.New(`not supported type for the in query - ` + queryVal.Kind().String())
+		}
 	case QPEq, QPEqSmb:
 		return sq.Eq{column: qi.Value}, nil
 	case QPGt, QPGtSmb:
