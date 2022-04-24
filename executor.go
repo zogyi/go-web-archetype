@@ -8,7 +8,7 @@ import (
 )
 
 type Connection interface {
-	*sqlx.DB | *sqlx.Tx
+	sqlx.DB | sqlx.Tx
 	Preparex(query string) (*sqlx.Stmt, error)
 	Select(dest interface{}, query string, args ...interface{}) error
 	Get(dest interface{}, query string, args ...interface{}) error
@@ -31,4 +31,13 @@ func execute[T Connection](conn T, sqlQuery string, args []interface{}) (result 
 		return
 	}
 	return statement.Exec(args...)
+}
+
+type queryExecutor[T Connection] struct {
+	db   sqlx.DB
+	conn T
+}
+
+func NewQueryExecutor(db sqlx.DB) queryExecutor[sqlx.DB] {
+	return queryExecutor[sqlx.DB]{db: db, conn: db}
 }

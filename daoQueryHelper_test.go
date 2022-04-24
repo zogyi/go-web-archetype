@@ -3,10 +3,8 @@ package go_web_archetype
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/log"
 	"gopkg.in/guregu/null.v3"
-	"strconv"
 	"testing"
 )
 
@@ -15,17 +13,17 @@ type TestStruct1 struct {
 	Field1 null.String `db:"field1" json:"field1"`
 }
 
-func initGenericDao() *GenericDao[*sqlx.DB] {
+func initGenericDao() *DaoQueryHelper {
 	log.InitLog(``, `debug`)
-	db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
-	if err != nil {
-		fmt.Println(err)
-		panic(`can't open the database connection`)
-	}
+	//db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	panic(`can't open the database connection`)
+	//}
 
-	dao := NewGenericDao(db)
-	dao.Bind(TestStruct1{}, `test`)
-	return dao
+	//dao := NewGenericDao(db)
+	//dao.Bind(TestStruct1{}, `test`)
+	return nil
 }
 
 //func TestGenericDao_Delete(t *testing.T) {
@@ -42,13 +40,10 @@ func TestGenericDao_TransferToSelectBuilder(t *testing.T) {
 }
 
 func TestGenericDao_Insert(t *testing.T) {
-	dao := initGenericDao()
-	txDao, err := BeginTx(dao)
-	if err != nil {
-		panic(err)
-	}
-	defer txDao.DB().Rollback()
-	queryWrapper := NewDefaultExtraQueryWrapper()
+	dao := DaoQueryHelper{}
+	dao.Bind(TestStruct1{}, `test`)
+
+	//queryWrapper := NewDefaultExtraQueryWrapper()
 	//setTime, err := time.Parse(`2006-01-02 15:04:05 -0700 MST`, `2021-09-02 15:04:05 +0800 UTC`)
 	//if err != nil {
 	//	panic(err)
@@ -60,6 +55,8 @@ func TestGenericDao_Insert(t *testing.T) {
 		//Field4: util.MyNullTime{Time: null.TimeFrom(setTime)},
 		//Filed5: null.IntFrom(1),
 	}
+
+	fmt.Println(item1)
 	//item2 := TestStruct1{
 	//	Field1: null.StringFrom(`field1-1`),
 	//	Field2: null.StringFrom(`field2-1`),
@@ -81,12 +78,11 @@ func TestGenericDao_Insert(t *testing.T) {
 	//	Field4: null.StringFrom(`field4-1`),
 	//	Filed5: null.IntFrom(1),
 	//}
-	if result, err := dao.InsertWithExtraQuery(item1, queryWrapper); err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println(result)
-	}
-	txDao.DB().Commit()
+	//if result, err := dao.InsertWithExtraQuery(item1, queryWrapper); err != nil {
+	//	fmt.Println(err)
+	//} else {
+	//	fmt.Println(result.ToSql())
+	//}
 
 }
 
@@ -116,27 +112,26 @@ func getQuery() (query Query, err error) {
 }
 
 func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
-	dao := initGenericDao()
-	queryWrapper := NewDefaultExtraQueryWrapper()
-	item := TestStruct1{
-		Id: null.IntFrom(1),
-		//Field1: null.StringFrom(`升级一下是试试看 `),
-		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
-	}
-	query, err := getQuery()
-	fmt.Println(err)
-	fmt.Println(query)
-	queryWrapper.QueryExtension = &QueryExtension{Query: query}
-	//queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
-	//queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
-	////queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
-	//queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
-	//queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
-	result := make([]TestStruct1, 0)
-	err = dao.SelectWithExtraQuery(item, queryWrapper, &result)
-	fmt.Println(result)
-	//fmt.Println(result.RowsAffected())
-	fmt.Println(err)
+	//dao := initGenericDao()
+	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//item := TestStruct1{
+	//	Id: null.IntFrom(1),
+	//	//Field1: null.StringFrom(`升级一下是试试看 `),
+	//	//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
+	//}
+	//query, err := getQuery()
+	//fmt.Println(err)
+	//fmt.Println(query)
+	//queryWrapper.QueryExtension = &QueryExtension{Query: query}
+	////queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like`, Value: `我是谁`})
+	////queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field2", Operator: `like`, Value: `我是谁`})
+	//////queryWrapper.QueryExtension.And = append(queryWrapper.QueryExtension.And, QueryItem{Field: "field1", Operator: `like1`, Value: `我是谁`})
+	////queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field1", Operator: `like`, Value: `我`})
+	////queryWrapper.QueryExtension.Or = append(queryWrapper.QueryExtension.Or, QueryItem{Field: "field2", Operator: `like`, Value: `我`})
+	//result := make([]TestStruct1, 0)
+	//fmt.Println(result)
+	////fmt.Println(result.RowsAffected())
+	//fmt.Println(err)
 }
 
 func TestGenericDao_Delete(t *testing.T) {
@@ -158,7 +153,7 @@ func TestGenericDao_Validate(t *testing.T) {
 		//Filed5:     null.IntFrom(0),
 		//Del:        null.BoolFrom(false)
 	}
-	eqCluase, setMap, _ := dao.Validate(item, Delete, `david`)
+	eqCluase, setMap, _ := dao.validate(item, Delete, `david`)
 	fmt.Println(eqCluase)
 	fmt.Println(setMap)
 }
@@ -173,14 +168,14 @@ func BenchmarkGenericDao_TransferToSelectBuilder(b *testing.B) {
 	}
 	dao := initGenericDao()
 	dao.Bind(TestStruct1{}, `test`)
-	queryWrapper := NewDefaultExtraQueryWrapper()
-	query, err := getQuery()
-	if err != nil {
-		panic(err)
-	}
-	queryWrapper.QueryExtension = &QueryExtension{Query: query}
-	for n := 0; n < b.N; n++ {
-		item := TestStruct1{Field1: null.StringFrom(`我是谁` + strconv.Itoa(n))}
-		dao.InsertWithExtraQuery(item, queryWrapper)
-	}
+	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//query, err := getQuery()
+	//if err != nil {
+	//	panic(err)
+	//}
+	//queryWrapper.QueryExtension = &QueryExtension{Query: query}
+	//for n := 0; n < b.N; n++ {
+	//	item := TestStruct1{Field1: null.StringFrom(`我是谁` + strconv.Itoa(n))}
+	//	dao.InsertWithExtraQuery(item, queryWrapper)
+	//}
 }
