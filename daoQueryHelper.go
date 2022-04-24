@@ -333,7 +333,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 	return sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
 }
 
-func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper *ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	_, setMap, _ := gd.validate(queryObj, Insert, extraQueryWrapper.CurrentUsername)

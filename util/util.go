@@ -3,6 +3,8 @@ package util
 import (
 	"errors"
 	"fmt"
+	"github.com/jmoiron/sqlx"
+	"golang.org/x/net/context"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"regexp"
@@ -10,15 +12,30 @@ import (
 	"time"
 )
 
+type txContext struct {
+}
+
+func SetTxContext(ctx context.Context, tx *sqlx.Tx) context.Context {
+	return context.WithValue(ctx, txContext{}, tx)
+}
+
+func ExtractTx(ctx context.Context) (tx *sqlx.Tx, ok bool) {
+	if ctx.Value(txContext{}) != nil {
+		if tx, ok = ctx.Value(txContext{}).(*sqlx.Tx); ok {
+			return
+		}
+	}
+	return
+}
+
 type Pagination struct {
 	PageSize    uint64 `form:"pageSize"`
 	CurrentPage uint64 `form:"currentPage"`
 	Total       uint64
 }
 
-
 type RolePath struct {
-	Role string `yaml:"role"`
+	Role string   `yaml:"role"`
 	Path []string `yaml:"path"`
 }
 
@@ -35,7 +52,6 @@ type ResponseObj struct {
 	ErrMsg  string      `json:"errMsg"`
 	Result  interface{} `json:"result"`
 }
-
 
 var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
 var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")
@@ -102,7 +118,7 @@ func InterfaceSlice(slice interface{}) []interface{} {
 
 	ret := make([]interface{}, s.Len())
 
-	for i:=0; i<s.Len(); i++ {
+	for i := 0; i < s.Len(); i++ {
 		ret[i] = s.Index(i).Interface()
 	}
 
@@ -118,7 +134,7 @@ func StringInSlice(a string, list []string) bool {
 	return false
 }
 
-func SetFieldValByName (obj interface{}, field string, val interface{}) error {
+func SetFieldValByName(obj interface{}, field string, val interface{}) error {
 	if obj == nil {
 		return errors.New(`object is null`)
 	}

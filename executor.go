@@ -1,9 +1,11 @@
 package go_web_archetype
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"github.com/***REMOVED***/go-web-archetype/util"
 	"go.uber.org/zap"
 )
 
@@ -33,16 +35,16 @@ func executeQuery[T Connection](conn T, sqlQuery string, args []interface{}) (re
 	return statement.Exec(args...)
 }
 
-type queryExecutor[T Connection] struct {
-	db          T
+type queryExecutor struct {
+	db          *sqlx.DB
 	queryHelper DaoQueryHelper
 }
 
-func NewQueryExecutor[T Connection](conn T, helper DaoQueryHelper) queryExecutor[T] {
-	return queryExecutor[T]{db: conn, queryHelper: helper}
+func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) queryExecutor {
+	return queryExecutor{db: conn, queryHelper: helper}
 }
 
-func (executor *queryExecutor[T]) SelectPage(queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
+func (executor *queryExecutor) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -58,18 +60,22 @@ func (executor *queryExecutor[T]) SelectPage(queryObj any, queryWrapper ExtraQue
 	return
 }
 
-func (executor *queryExecutor[T]) SelectList(queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
+func (executor *queryExecutor) SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
 	if sql, args, err = executor.queryHelper.selectListQuery(queryObj, queryWrapper); err == nil {
-		return selectList(executor.db, sql, args, resultSet)
+		if tx, ok := util.ExtractTx(ctx); ok {
+			return selectList(tx, sql, args, resultSet)
+		} else {
+			return selectList(executor.db, sql, args, resultSet)
+		}
 	}
 	return
 }
 
-func (executor *queryExecutor[T]) Update(queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *queryExecutor) Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -80,12 +86,23 @@ func (executor *queryExecutor[T]) Update(queryObj any, wrapper ExtraQueryWrapper
 	return
 }
 
-func (executor *queryExecutor[T]) Delete(queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *queryExecutor) Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
 	if sql, args, err = executor.queryHelper.deleteQuery(queryObj, wrapper); err == nil {
+		return executeQuery(executor.db, sql, args)
+	}
+	return
+}
+
+func (executor *queryExecutor) Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+	var (
+		sql  string
+		args []interface{}
+	)
+	if sql, args, err = executor.queryHelper.insertQuery(queryObj, wrapper); err == nil {
 		return executeQuery(executor.db, sql, args)
 	}
 	return
