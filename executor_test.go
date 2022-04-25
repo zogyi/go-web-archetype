@@ -2,6 +2,7 @@ package go_web_archetype
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/log"
@@ -17,13 +18,30 @@ func TestExecutor_SelectList(t *testing.T) {
 	}
 	type resultType struct {
 		Id     int    `db:"id"`
-		Field1 string `db:"field1"`
+		Field1 string `db:"field1" json:"field1"`
 	}
-	queryHelper := DaoQueryHelper{}
+	queryHelper := NewDaoQueryHelper(true)
 	queryHelper.Bind(resultType{}, `test`)
-	executor := NewQueryExecutor(db, queryHelper)
+	executor := NewQueryExecutor(db, *queryHelper)
+	err = executor.WithTxFunction(context.Background(), func(tx context.Context) (err error) {
+		var result sql.Result
+		//var queryResult = make([]resultType, 0)
+		//result, err = executor.Insert(tx, resultType{Field1: `123124125125agsadgsadgsadg`}, ExtraQueryWrapper{})
+		//if err != nil {
+		//	return
+		//}
+		//result, err = executor.Insert(tx, resultType{Field1: `agas214agsgsgsdgsdfs`}, ExtraQueryWrapper{})
+		//if err != nil {
+		//	return
+		//}
+		//result, err = executor.Delete(tx, resultType{Field1: `i'm test 1, 2, 3, 4, 5, 6`}, ExtraQueryWrapper{})
+		//if err != nil {
+		//	return
+		//}
+		result, err = executor.Update(tx, resultType{Id: 18, Field1: `i'm test 1, 223232, 3, 4, 5, 6`}, ExtraQueryWrapper{})
+		fmt.Println(result)
+		return
+	})
 	//result := make([]resultType, 0)
-	result, err := executor.Insert(context.Background(), resultType{Field1: `i'm test 1, 2, 3, 4, 5, 6`}, ExtraQueryWrapper{})
 	fmt.Println(err)
-	fmt.Println(result)
 }

@@ -189,7 +189,6 @@ func (qj Query) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err
 	operatorAnd := sq.And{}
 	operatorOr := sq.Or{}
 	for _, item := range qj.Condition {
-		var err error
 		var curentSqlizer sq.Sqlizer
 		switch pred := item.(type) {
 		case nil:
