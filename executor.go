@@ -51,7 +51,8 @@ type QueryExecutor interface {
 	WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error)
 
 	GetTable(queryObj any) (string, bool)
-	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper) sq.SelectBuilder
+	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder
+	GetColumns(entity string) ([]string, bool)
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -67,8 +68,12 @@ func (executor *QueryExecutorImpl) GetTable(queryObj any) (table string, exist b
 	return executor.queryHelper.GetEntityTable(queryObj)
 }
 
-func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper) sq.SelectBuilder {
-	return excutor.queryHelper.TransferToSelectBuilder(queryObj, wrapper)
+func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder {
+	return excutor.queryHelper.TransferToSelectBuilder(queryObj, wrapper, columns...)
+}
+
+func (excutor *QueryExecutorImpl) GetColumns(entity string) (columns []string, exist bool) {
+	return excutor.queryHelper.GetColumns(entity)
 }
 
 func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
