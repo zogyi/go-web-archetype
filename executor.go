@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/***REMOVED***/go-web-archetype/util"
 	"go.uber.org/zap"
@@ -41,14 +42,16 @@ type QueryExecutorImpl struct {
 }
 
 type QueryExecutor interface {
-	DB() sqlx.DB
+	DB() *sqlx.DB
 	SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error)
-	SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error)
+	Select(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error)
 	Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
 	Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
 	Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
-	GetTable(queryObj any) (string, bool)
 	WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error)
+
+	GetTable(queryObj any) (string, bool)
+	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper) sq.SelectBuilder
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -56,12 +59,16 @@ func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecu
 	return
 }
 
-func (executor *QueryExecutorImpl) DB() sqlx.DB {
-	return *executor.db
+func (executor *QueryExecutorImpl) DB() *sqlx.DB {
+	return executor.db
 }
 
 func (executor *QueryExecutorImpl) GetTable(queryObj any) (table string, exist bool) {
 	return executor.queryHelper.GetEntityTable(queryObj)
+}
+
+func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper) sq.SelectBuilder {
+	return excutor.queryHelper.TransferToSelectBuilder(queryObj, wrapper)
 }
 
 func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
@@ -84,7 +91,7 @@ func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any,
 	return
 }
 
-func (executor *QueryExecutorImpl) SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
+func (executor *QueryExecutorImpl) Select(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
 	var (
 		sql  string
 		args []interface{}
