@@ -1,10 +1,10 @@
 package util
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/net/context"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"regexp"

@@ -88,7 +88,7 @@ func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 
 type entitiesInfo map[string]structInfo
 
-type daoQueryHelper struct {
+type DaoQueryHelper struct {
 	bondEntities       []interface{}     //所有的entity
 	entityTableMapping map[string]string //entity与table名字之间的映射
 	entitiesInfos      entitiesInfo      //entity field所有的表单的映射
@@ -100,13 +100,13 @@ type daoQueryHelper struct {
 	//commonFields 	   util.CommonFields
 }
 
-func NewDaoQueryHelper(allowFullTableExecute bool, types ...interface{}) *daoQueryHelper {
-	queryHelper := daoQueryHelper{allowFullTableExecute: allowFullTableExecute}
+func NewDaoQueryHelper(allowFullTableExecute bool, types ...interface{}) *DaoQueryHelper {
+	queryHelper := DaoQueryHelper{allowFullTableExecute: allowFullTableExecute}
 	queryHelper.AddCustomType(types...)
 	return &queryHelper
 }
 
-func (gd *daoQueryHelper) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
+func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
 	if structInfo, exist := gd.entitiesInfos[structName]; exist {
 		for _, fieldInfo := range structInfo.fieldInfos {
 			if fieldInfo.JSONField == jsonName {
@@ -117,21 +117,25 @@ func (gd *daoQueryHelper) getFieldInfo(structName string, jsonName string) (fiel
 	return fieldInfo{}, false
 }
 
-func (gd *daoQueryHelper) GetColumns(entity string) (columns []string, exist bool) {
+func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist bool) {
 	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
 		return fieldsInfo.GetColumns(), true
 	}
 	return columns, false
 }
 
-func (gd *daoQueryHelper) GetTable(entity string) (string, bool) {
+func (gd *DaoQueryHelper) GetEntityTable(queryObj any) (string, bool) {
+	return gd.GetTable(reflect.TypeOf(queryObj).Name())
+}
+
+func (gd *DaoQueryHelper) GetTable(entity string) (string, bool) {
 	if table, exist := gd.entityTableMapping[entity]; exist {
 		return table, true
 	}
 	return ``, false
 }
 
-func (gd *daoQueryHelper) AddCustomType(types ...interface{}) *daoQueryHelper {
+func (gd *DaoQueryHelper) AddCustomType(types ...interface{}) *DaoQueryHelper {
 	//reflect.TypeOf(types).Name()
 	if gd.entitiesInfos == nil {
 		gd.entitiesInfos = entitiesInfo{}
@@ -155,7 +159,7 @@ func (gd *daoQueryHelper) AddCustomType(types ...interface{}) *daoQueryHelper {
 	return gd
 }
 
-func (gd *daoQueryHelper) containCustomType(fieldType reflect.Type) bool {
+func (gd *DaoQueryHelper) containCustomType(fieldType reflect.Type) bool {
 	for i := 0; i < len(gd.customType); i++ {
 		if reflect.TypeOf(gd.customType[i]) == fieldType {
 			return true
@@ -164,15 +168,15 @@ func (gd *daoQueryHelper) containCustomType(fieldType reflect.Type) bool {
 	return false
 }
 
-func (gd *daoQueryHelper) GetBondEntities() []interface{} {
+func (gd *DaoQueryHelper) GetBondEntities() []interface{} {
 	return gd.bondEntities
 }
 
-func (gd *daoQueryHelper) GetEntityTableMapping() map[string]string {
+func (gd *DaoQueryHelper) GetEntityTableMapping() map[string]string {
 	return gd.entityTableMapping
 }
 
-func (gd *daoQueryHelper) Bind(interf interface{}, table string) {
+func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 	crtIrf := reflect.TypeOf(interf)
 	if crtIrf.Kind() != reflect.Struct {
 		panic(`only struct is ok`)
@@ -247,7 +251,7 @@ func getFieldInfo(field reflect.StructField) fieldInfo {
 		IsLogicDel:   isLogicDel}
 }
 
-func (gd *daoQueryHelper) selectPageQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).
 		FromSelect(builder, `t1`).
@@ -256,17 +260,17 @@ func (gd *daoQueryHelper) selectPageQuery(queryObj any, extraQuery ExtraQueryWra
 
 }
 
-func (gd *daoQueryHelper) count(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) count(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`count(*) as totalCount`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *daoQueryHelper) selectListQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectListQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *daoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
+func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if len(columns) <= 0 {
 		columns = []string{`*`}
 	}
@@ -313,7 +317,7 @@ func (gd *daoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 	return selectBuilder
 }
 
-func (gd *daoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) []string {
+func (gd *DaoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) []string {
 	structName := reflect.TypeOf(queryObj).Name()
 	columns := make([]string, 0)
 	if mappingStruct, exist := gd.entitiesInfos[structName]; exist {
@@ -327,7 +331,7 @@ func (gd *daoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) 
 }
 
 //update remove the common fields
-func (gd *daoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	var (
@@ -361,14 +365,14 @@ func (gd *daoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 	return builder.ToSql()
 }
 
-func (gd *daoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	_, setMap, _ := gd.validate(queryObj, Insert, extraQueryWrapper.CurrentUsername)
 	return sq.Insert(table).SetMap(setMap).ToSql()
 }
 
-func (gd *daoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	var (
@@ -399,7 +403,7 @@ func (gd *daoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 	return sq.Delete(table).Where(sqlizer).ToSql()
 }
 
-func (gd *daoQueryHelper) validate(queryObj any, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
+func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
 	intfType := reflect.TypeOf(queryObj)
 	intfVal := reflect.ValueOf(queryObj)
 	//whereClause := sq.Eq{}

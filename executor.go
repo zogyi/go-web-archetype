@@ -35,16 +35,36 @@ func executeQuery[T Connection](conn T, sqlQuery string, args []interface{}) (re
 	return statement.Exec(args...)
 }
 
-type queryExecutor struct {
+type QueryExecutorImpl struct {
 	db          *sqlx.DB
-	queryHelper daoQueryHelper
+	queryHelper DaoQueryHelper
 }
 
-func NewQueryExecutor(conn *sqlx.DB, helper daoQueryHelper) queryExecutor {
-	return queryExecutor{db: conn, queryHelper: helper}
+type QueryExecutor interface {
+	DB() sqlx.DB
+	SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error)
+	SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error)
+	Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
+	Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
+	Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
+	GetTable(queryObj any) (string, bool)
+	WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error)
 }
 
-func (executor *queryExecutor) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
+func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
+	executor = &QueryExecutorImpl{db: conn, queryHelper: helper}
+	return
+}
+
+func (executor *QueryExecutorImpl) DB() sqlx.DB {
+	return *executor.db
+}
+
+func (executor *QueryExecutorImpl) GetTable(queryObj any) (table string, exist bool) {
+	return executor.queryHelper.GetEntityTable(queryObj)
+}
+
+func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -64,7 +84,7 @@ func (executor *queryExecutor) SelectPage(ctx context.Context, queryObj any, que
 	return
 }
 
-func (executor *queryExecutor) SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
+func (executor *QueryExecutorImpl) SelectList(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -78,7 +98,7 @@ func (executor *queryExecutor) SelectList(ctx context.Context, queryObj any, que
 	return
 }
 
-func (executor *queryExecutor) Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -92,7 +112,7 @@ func (executor *queryExecutor) Update(ctx context.Context, queryObj any, wrapper
 	return
 }
 
-func (executor *queryExecutor) Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -106,7 +126,7 @@ func (executor *queryExecutor) Delete(ctx context.Context, queryObj any, wrapper
 	return
 }
 
-func (executor *queryExecutor) Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
@@ -120,7 +140,7 @@ func (executor *queryExecutor) Insert(ctx context.Context, queryObj any, wrapper
 	return
 }
 
-func (executor *queryExecutor) WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error) {
+func (executor *QueryExecutorImpl) WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error) {
 	var (
 		tx *sqlx.Tx
 	)

@@ -13,7 +13,7 @@ type TestStruct1 struct {
 	Field1 null.String `db:"field1" json:"field1"`
 }
 
-func initGenericDao() *daoQueryHelper {
+func initGenericDao() *DaoQueryHelper {
 	log.InitLog(``, `debug`)
 	//db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
 	//if err != nil {
@@ -40,7 +40,7 @@ func TestGenericDao_TransferToSelectBuilder(t *testing.T) {
 }
 
 func TestGenericDao_Insert(t *testing.T) {
-	dao := daoQueryHelper{}
+	dao := DaoQueryHelper{}
 	dao.Bind(TestStruct1{}, `test`)
 
 	//queryWrapper := NewDefaultExtraQueryWrapper()

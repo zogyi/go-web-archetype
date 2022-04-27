@@ -10,6 +10,7 @@ require (
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	go.uber.org/zap v1.18.1
+	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
 	gopkg.in/guregu/null.v3 v3.5.0
 )
 
