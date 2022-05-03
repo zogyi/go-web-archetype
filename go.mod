@@ -1,4 +1,4 @@
-module github.com/***REMOVED***/go-web-archetype
+module github.com/zogyi/go-web-archetype
 
 go 1.18
 

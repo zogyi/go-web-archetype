@@ -2,7 +2,7 @@ package go_web_archetype
 
 import (
 	"fmt"
-	"github.com/***REMOVED***/go-web-archetype/util"
+	"github.com/zogyi/go-web-archetype/util"
 	"gopkg.in/guregu/null.v3"
 	"strings"
 )
@@ -11,13 +11,12 @@ type Operation string
 type OrderByType string
 
 const (
-	Insert Operation = `insert`
-	Update Operation = `update`
-	Delete Operation = `delete`
-	Select Operation = `select`
-	ASC  OrderByType = `ASC`
-	DESC OrderByType = `DESC`
-
+	Insert Operation   = `insert`
+	Update Operation   = `update`
+	Delete Operation   = `delete`
+	Select Operation   = `select`
+	ASC    OrderByType = `ASC`
+	DESC   OrderByType = `DESC`
 )
 
 type CommonFields struct {

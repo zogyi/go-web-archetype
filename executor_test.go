@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/***REMOVED***/go-web-archetype/log"
+	"github.com/zogyi/go-web-archetype/log"
 	"testing"
 )
 

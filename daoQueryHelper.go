@@ -5,7 +5,7 @@ import (
 	"fmt"
 	sq "github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/***REMOVED***/go-web-archetype/util"
+	"github.com/zogyi/go-web-archetype/util"
 	"reflect"
 	"strings"
 	"time"

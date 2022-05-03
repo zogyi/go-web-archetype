@@ -3,7 +3,7 @@ package go_web_archetype
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/***REMOVED***/go-web-archetype/log"
+	"github.com/zogyi/go-web-archetype/log"
 	"gopkg.in/guregu/null.v3"
 	"testing"
 )
