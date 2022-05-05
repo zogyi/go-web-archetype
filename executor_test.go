@@ -53,3 +53,13 @@ func TestQueryExecutorImpl_Get(t *testing.T) {
 	ast.Nil(err, `execute the select failed`)
 	ast.Truef(exist, `no result found`)
 }
+
+func TestQueryExecutorImpl_Insert(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := resultType{}
+	queryResult, err := executor.Insert(context.Background(), result, ExtraQueryWrapper{})
+	ast.Nil(err, `execute the select failed`)
+	effected, _ := queryResult.RowsAffected()
+	ast.GreaterOrEqual(effected, int64(0), `effected row is not greater or equal 0`)
+}
