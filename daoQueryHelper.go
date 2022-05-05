@@ -265,7 +265,7 @@ func (gd *DaoQueryHelper) count(queryObj any, extraQuery ExtraQueryWrapper) (sql
 	return sq.Select(`count(*) as totalCount`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) selectListQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 }
