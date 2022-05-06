@@ -84,7 +84,7 @@ func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper 
 
 //GetColumns get all columns for an object
 func (excutor *QueryExecutorImpl) GetColumns(entity any) (columns []string, exist bool) {
-	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).String())
+	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).Name())
 }
 
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.

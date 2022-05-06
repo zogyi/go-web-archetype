@@ -1,7 +1,7 @@
 package util
 
 import (
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 	"time"
 )
 
@@ -27,7 +27,7 @@ type RefreshClaims struct {
 	UserID     uint64 `json:"user_id"`
 	AppVersion string `json:"app_version"`
 	AppName    string `json:"app_name"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 type SignPairEntity struct {
@@ -62,8 +62,8 @@ func SignRefreshToken(uid uint64) (string, time.Time, error) {
 		UserID:     uid,
 		AppVersion: ConstantVersion,
 		AppName:    ConstantAppName,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)

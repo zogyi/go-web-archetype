@@ -86,6 +86,7 @@ func (qi QueryItem) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer,
 		queryVal := reflect.ValueOf(currentValue)
 		if queryVal.Kind() == reflect.String {
 			currentValue = strings.Split(qi.Value.(string), `,`)
+			return sq.Eq{column: currentValue}, nil
 		}
 		if queryVal.Kind() == reflect.Array || queryVal.Kind() == reflect.Slice {
 			inParams := util.InterfaceSlice(currentValue)
