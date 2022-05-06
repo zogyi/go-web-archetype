@@ -29,7 +29,9 @@ const (
 	QPIn     QueryOperator = `in`
 )
 
+//SqlTranslate a interface to translate the json fields to the where conditions
 type SqlTranslate interface {
+	//ToSQL the json field to the field info map is require to execute this method
 	ToSQL(map[string]fieldInfo) (sq.Sqlizer, error)
 }
 

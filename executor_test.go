@@ -2,46 +2,77 @@ package go_web_archetype
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"github.com/jmoiron/sqlx"
+	"github.com/stretchr/testify/assert"
 	"github.com/zogyi/go-web-archetype/log"
+	"gopkg.in/guregu/null.v3"
 	"testing"
+	"time"
 )
 
-func TestExecutor_SelectList(t *testing.T) {
+type resultType struct {
+	Id     int         `db:"id"`
+	Field1 null.String `db:"field1" json:"field1"`
+	Field2 null.String `db:"field2" json:"field2"`
+	Field3 null.String `db:"field3" json:"field3"`
+	Field4 null.String `db:"field4" json:"field4"`
+}
+
+func prepareExecutor() QueryExecutor {
 	log.InitLog(`/Users/zhongyi/workspace/golang/go-web-archetype/logs/`, `debug`)
-	db, err := sqlx.Open(`mysql`, `***REMOVED***:***REMOVED***@tcp(***REMOVED***)/restaurant?charset=utf8&parseTime=true`)
+	db, err := sqlx.Open(`mysql`, `<username>:<password>@tcp(<ip>:<port>)/<schema>?charset=utf8&parseTime=true`)
 	if err != nil {
-		fmt.Println(`something wrong`)
-		return
+		panic(`wrong connection url`)
 	}
-	type resultType struct {
-		Id     int    `db:"id"`
-		Field1 string `db:"field1" json:"field1"`
-	}
-	queryHelper := NewDaoQueryHelper(true)
+	queryHelper := NewDaoQueryHelper()
+	//queryHelper.setFullTableExecute(true)
 	queryHelper.Bind(resultType{}, `test`)
-	executor := NewQueryExecutor(db, *queryHelper)
-	err = executor.WithTxFunction(context.Background(), func(tx context.Context) (err error) {
-		var result sql.Result
-		//var queryResult = make([]resultType, 0)
-		//result, err = executor.Insert(tx, resultType{Field1: `123124125125agsadgsadgsadg`}, ExtraQueryWrapper{})
-		//if err != nil {
-		//	return
-		//}
-		//result, err = executor.Insert(tx, resultType{Field1: `agas214agsgsgsdgsdfs`}, ExtraQueryWrapper{})
-		//if err != nil {
-		//	return
-		//}
-		//result, err = executor.Delete(tx, resultType{Field1: `i'm test 1, 2, 3, 4, 5, 6`}, ExtraQueryWrapper{})
-		//if err != nil {
-		//	return
-		//}
-		result, err = executor.Update(tx, resultType{Id: 18, Field1: `i'm test 1, 223232, 3, 4, 5, 6`}, ExtraQueryWrapper{})
-		fmt.Println(result)
-		return
-	})
-	//result := make([]resultType, 0)
-	fmt.Println(err)
+	return NewQueryExecutor(db, *queryHelper)
+}
+
+func TestExecutor_SelectList(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := make([]resultType, 0)
+	err := executor.Select(context.Background(), resultType{}, ExtraQueryWrapper{}, &result)
+	ast.Nil(err, `execute the select failed`)
+}
+
+func TestQueryExecutorImpl_SelectPage(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := make([]resultType, 0)
+	total, err := executor.SelectPage(context.Background(), resultType{}, ExtraQueryWrapper{}, &result)
+	ast.Nil(err, `execute the select failed`)
+	ast.GreaterOrEqual(total, uint64(0), `the count is not greater or equal 0`)
+}
+
+func TestQueryExecutorImpl_Get(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := resultType{}
+	exist, err := executor.Get(context.Background(), resultType{}, ExtraQueryWrapper{}, &result)
+	ast.Nil(err, `execute the select failed`)
+	ast.Truef(exist, `no result found`)
+}
+
+func TestQueryExecutorImpl_Insert(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	now := time.Now().String()
+	result := resultType{Field1: null.StringFrom(`this is the field1, time: ` + now), Field2: null.StringFrom(`this is the field2, time: ` + now)}
+	queryResult, err := executor.Insert(context.Background(), result, ExtraQueryWrapper{})
+	ast.Nil(err, `execute the select failed`)
+	effected, _ := queryResult.RowsAffected()
+	ast.GreaterOrEqual(effected, int64(0), `effected row is not greater or equal 0`)
+}
+
+func TestQueryExecutorImpl_Delete(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := resultType{}
+	queryResult, err := executor.Delete(context.Background(), result, ExtraQueryWrapper{})
+	ast.Nil(err, `execute the select failed`)
+	effected, _ := queryResult.RowsAffected()
+	ast.GreaterOrEqual(effected, int64(0), `effected row is not greater or equal 0`)
 }

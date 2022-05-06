@@ -100,10 +100,14 @@ type DaoQueryHelper struct {
 	//commonFields 	   util.CommonFields
 }
 
-func NewDaoQueryHelper(allowFullTableExecute bool, types ...interface{}) *DaoQueryHelper {
-	queryHelper := DaoQueryHelper{allowFullTableExecute: allowFullTableExecute}
+func NewDaoQueryHelper(types ...interface{}) *DaoQueryHelper {
+	queryHelper := DaoQueryHelper{}
 	queryHelper.AddCustomType(types...)
 	return &queryHelper
+}
+
+func (gd *DaoQueryHelper) setFullTableExecute(fullExecute bool) {
+	gd.allowFullTableExecute = fullExecute
 }
 
 func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
@@ -265,7 +269,7 @@ func (gd *DaoQueryHelper) count(queryObj any, extraQuery ExtraQueryWrapper) (sql
 	return sq.Select(`count(*) as totalCount`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) selectListQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 }
@@ -396,9 +400,12 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 	} else if querySqlizer != nil && (eqClause == nil || len(eqClause) == 0) {
 		sqlizer = querySqlizer
 	}
-	if !gd.allowFullTableExecute && querySqlizer == nil && (eqClause == nil || len(eqClause) == 0) {
-		err = errors.New(`condition is empty`)
-		return
+	if querySqlizer == nil && (eqClause == nil || len(eqClause) == 0) {
+		if !gd.allowFullTableExecute {
+			err = errors.New(`condition is empty`)
+			return
+		}
+		return sq.Delete(table).ToSql()
 	}
 	return sq.Delete(table).Where(sqlizer).ToSql()
 }
