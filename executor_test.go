@@ -7,6 +7,7 @@ import (
 	"github.com/zogyi/go-web-archetype/log"
 	"gopkg.in/guregu/null.v3"
 	"testing"
+	"time"
 )
 
 type resultType struct {
@@ -23,7 +24,8 @@ func prepareExecutor() QueryExecutor {
 	if err != nil {
 		panic(`wrong connection url`)
 	}
-	queryHelper := NewDaoQueryHelper(true)
+	queryHelper := NewDaoQueryHelper()
+	//queryHelper.setFullTableExecute(true)
 	queryHelper.Bind(resultType{}, `test`)
 	return NewQueryExecutor(db, *queryHelper)
 }
@@ -57,8 +59,19 @@ func TestQueryExecutorImpl_Get(t *testing.T) {
 func TestQueryExecutorImpl_Insert(t *testing.T) {
 	ast := assert.New(t)
 	executor := prepareExecutor()
-	result := resultType{}
+	now := time.Now().String()
+	result := resultType{Field1: null.StringFrom(`this is the field1, time: ` + now), Field2: null.StringFrom(`this is the field2, time: ` + now)}
 	queryResult, err := executor.Insert(context.Background(), result, ExtraQueryWrapper{})
+	ast.Nil(err, `execute the select failed`)
+	effected, _ := queryResult.RowsAffected()
+	ast.GreaterOrEqual(effected, int64(0), `effected row is not greater or equal 0`)
+}
+
+func TestQueryExecutorImpl_Delete(t *testing.T) {
+	ast := assert.New(t)
+	executor := prepareExecutor()
+	result := resultType{}
+	queryResult, err := executor.Delete(context.Background(), result, ExtraQueryWrapper{})
 	ast.Nil(err, `execute the select failed`)
 	effected, _ := queryResult.RowsAffected()
 	ast.GreaterOrEqual(effected, int64(0), `effected row is not greater or equal 0`)
