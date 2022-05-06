@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/zogyi/go-web-archetype/util"
 	"go.uber.org/zap"
+	"reflect"
 )
 
 type Connection interface {
@@ -59,7 +60,7 @@ type QueryExecutor interface {
 
 	GetTable(queryObj any) (string, bool)
 	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder
-	GetColumns(entity string) ([]string, bool)
+	GetColumns(entity any) ([]string, bool)
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -82,8 +83,8 @@ func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper 
 }
 
 //GetColumns get all columns for an object
-func (excutor *QueryExecutorImpl) GetColumns(entity string) (columns []string, exist bool) {
-	return excutor.queryHelper.GetColumns(entity)
+func (excutor *QueryExecutorImpl) GetColumns(entity any) (columns []string, exist bool) {
+	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).String())
 }
 
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.
@@ -125,7 +126,7 @@ func (executor *QueryExecutorImpl) Get(ctx context.Context, queryObj any, queryW
 		if err == sql.ErrNoRows {
 			return exist, nil
 		}
-		return exist, err
+		return false, err
 	}
 	return true, nil
 }
