@@ -24,12 +24,14 @@ type ExtraQueryWrapper struct {
 }
 
 const (
-	FixedColumnCreateBy string = `create_by`
-	FixedColumnUpdateBy string = `update_by`
-	FixedColumnDel      string = `del`
-	TagArchType         string = `archType`
-	TagPrimaryKey       string = `primaryKey`
-	TagAutoFilled       string = `autoFill`
+	FixedColumnCreateBy   string = `create_by`
+	FixedColumnUpdateBy   string = `update_by`
+	FixedColumnCreateTime string = `create_time`
+	FixedColumnUpdateTime string = `update_time`
+	FixedColumnDel        string = `del`
+	TagArchType           string = `archType`
+	TagPrimaryKey         string = `primaryKey`
+	TagAutoFilled         string = `autoFill`
 )
 
 type fieldInfo struct {
@@ -452,12 +454,10 @@ func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUse
 			if (strings.ToLower(filedCfg.TableField) == FixedColumnUpdateBy && (operation == Delete || operation == Update)) ||
 				(strings.ToLower(filedCfg.TableField) == FixedColumnCreateBy && operation == Insert) {
 				setMap[filedCfg.TableField] = executeUser
-				continue
 			}
-			if (strings.ToLower(filedCfg.TableField) == FixedColumnUpdateBy && (operation == Delete || operation == Update)) ||
-				(strings.ToLower(filedCfg.TableField) == FixedColumnCreateBy && operation == Insert) {
+			if (strings.ToLower(filedCfg.TableField) == FixedColumnUpdateTime && (operation == Delete || operation == Update)) ||
+				(strings.ToLower(filedCfg.TableField) == FixedColumnCreateTime && operation == Insert) {
 				setMap[filedCfg.TableField] = time.Now()
-				continue
 			}
 			if strings.ToLower(filedCfg.TableField) == FixedColumnDel {
 				if operation != Insert {
@@ -466,8 +466,8 @@ func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUse
 				if operation == Delete {
 					setMap[filedCfg.TableField] = true
 				}
-				continue
 			}
+			continue
 		}
 		if filedCfg.IsPrimaryKey {
 			primaryKeyValid = !crtFiledVal.IsZero()
