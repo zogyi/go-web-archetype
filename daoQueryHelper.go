@@ -59,6 +59,15 @@ func (strFieldInfo *structInfo) GetColumns() (columns []string) {
 	return columns
 }
 
+func (strFieldInfo *structInfo) IdentifierColumn() (identifier string) {
+	for _, info := range strFieldInfo.fieldInfos {
+		if info.IsPrimaryKey {
+			return info.TableField
+		}
+	}
+	return
+}
+
 func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
 	if (fieldInfo{}) == fInfo {
 		panic(`the param fInfo is null`)
@@ -128,6 +137,13 @@ func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist boo
 		return fieldsInfo.GetColumns(), true
 	}
 	return columns, false
+}
+
+func (gd *DaoQueryHelper) GetIdentifier(entity string) string {
+	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
+		return fieldsInfo.IdentifierColumn()
+	}
+	return ``
 }
 
 func (gd *DaoQueryHelper) GetEntityTable(queryObj any) (string, bool) {

@@ -61,6 +61,7 @@ type QueryExecutor interface {
 	GetTable(queryObj any) (string, bool)
 	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder
 	GetColumns(entity any) ([]string, bool)
+	GetIdentifier(entity any) string
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -85,6 +86,10 @@ func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper 
 //GetColumns get all columns for an object
 func (excutor *QueryExecutorImpl) GetColumns(entity any) (columns []string, exist bool) {
 	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).Name())
+}
+
+func (exector *QueryExecutorImpl) GetIdentifier(entity any) string {
+	return exector.queryHelper.GetIdentifier(reflect.TypeOf(entity).Name())
 }
 
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.
