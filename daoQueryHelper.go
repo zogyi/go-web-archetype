@@ -384,6 +384,7 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
 		eqClause              sq.Eq
+		hasPrimaryKey         bool
 	)
 
 	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
@@ -392,7 +393,11 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 		}
 	}
 
-	eqClause, _, _ = gd.validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
+	eqClause, _, hasPrimaryKey = gd.validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
+	if hasPrimaryKey {
+		eqClause := map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
+		return sq.Delete(table).Where(eqClause).ToSql()
+	}
 	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
