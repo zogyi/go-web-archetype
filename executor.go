@@ -61,7 +61,7 @@ type QueryExecutor interface {
 	GetTable(queryObj any) (string, bool)
 	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder
 	GetColumns(entity any) ([]string, bool)
-	GetIdentifier(entity any) string
+	GetIdentifier(entity any) (FieldInfo, bool)
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -88,7 +88,7 @@ func (excutor *QueryExecutorImpl) GetColumns(entity any) (columns []string, exis
 	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).Name())
 }
 
-func (exector *QueryExecutorImpl) GetIdentifier(entity any) string {
+func (exector *QueryExecutorImpl) GetIdentifier(entity any) (FieldInfo, bool) {
 	return exector.queryHelper.GetIdentifier(reflect.TypeOf(entity).Name())
 }
 

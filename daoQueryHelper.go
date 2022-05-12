@@ -34,7 +34,7 @@ const (
 	TagAutoFilled         string = `autoFill`
 )
 
-type fieldInfo struct {
+type FieldInfo struct {
 	Field        string
 	JSONField    string
 	TableField   string
@@ -45,10 +45,10 @@ type fieldInfo struct {
 }
 
 type structInfo struct {
-	fieldInfos       map[string]fieldInfo //所有的字段集合
-	jsonFieldInfos   map[string]fieldInfo //所有的字段集合
-	primaryKey       fieldInfo            //主键字段
-	autoFilledFields map[string]fieldInfo //自动填充字段
+	fieldInfos       map[string]FieldInfo //所有的字段集合
+	jsonFieldInfos   map[string]FieldInfo //所有的字段集合
+	primaryKey       FieldInfo            //主键字段
+	autoFilledFields map[string]FieldInfo //自动填充字段
 	LogicDel         bool
 }
 
@@ -59,32 +59,32 @@ func (strFieldInfo *structInfo) GetColumns() (columns []string) {
 	return columns
 }
 
-func (strFieldInfo *structInfo) IdentifierColumn() (identifier string) {
+func (strFieldInfo *structInfo) IdentifierColumn() (fieldInfo FieldInfo, exist bool) {
 	for _, info := range strFieldInfo.fieldInfos {
 		if info.IsPrimaryKey {
-			return info.TableField
+			return info, true
 		}
 	}
 	return
 }
 
-func (strFieldInfo *structInfo) addField(fInfo fieldInfo) {
-	if (fieldInfo{}) == fInfo {
+func (strFieldInfo *structInfo) addField(fInfo FieldInfo) {
+	if (FieldInfo{}) == fInfo {
 		panic(`the param fInfo is null`)
 	}
 	if strFieldInfo.fieldInfos == nil {
-		strFieldInfo.fieldInfos = make(map[string]fieldInfo)
+		strFieldInfo.fieldInfos = make(map[string]FieldInfo)
 	}
 	if strFieldInfo.jsonFieldInfos == nil {
-		strFieldInfo.jsonFieldInfos = make(map[string]fieldInfo)
+		strFieldInfo.jsonFieldInfos = make(map[string]FieldInfo)
 	}
 	if strFieldInfo.autoFilledFields == nil {
-		strFieldInfo.autoFilledFields = make(map[string]fieldInfo)
+		strFieldInfo.autoFilledFields = make(map[string]FieldInfo)
 	}
 	strFieldInfo.fieldInfos[fInfo.Field] = fInfo
 	strFieldInfo.jsonFieldInfos[fInfo.JSONField] = fInfo
 	if fInfo.IsPrimaryKey {
-		if (fieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField {
+		if (FieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField {
 			panic(fmt.Sprintf(`the field set as primary key can't more than 1, the existing primary key is %s and the new primary key is %s`, strFieldInfo.primaryKey.TableField, fInfo.TableField))
 		}
 		strFieldInfo.primaryKey = fInfo
@@ -121,7 +121,7 @@ func (gd *DaoQueryHelper) setFullTableExecute(fullExecute bool) {
 	gd.allowFullTableExecute = fullExecute
 }
 
-func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (fieldInfo, bool) {
+func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (FieldInfo, bool) {
 	if structInfo, exist := gd.entitiesInfos[structName]; exist {
 		for _, fieldInfo := range structInfo.fieldInfos {
 			if fieldInfo.JSONField == jsonName {
@@ -129,7 +129,7 @@ func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (fiel
 			}
 		}
 	}
-	return fieldInfo{}, false
+	return FieldInfo{}, false
 }
 
 func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist bool) {
@@ -139,11 +139,11 @@ func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist boo
 	return columns, false
 }
 
-func (gd *DaoQueryHelper) GetIdentifier(entity string) string {
-	if fieldsInfo, exist := gd.entitiesInfos[entity]; exist {
-		return fieldsInfo.IdentifierColumn()
+func (gd *DaoQueryHelper) GetIdentifier(entity string) (filedInfo FieldInfo, exist bool) {
+	if structInfo, exist := gd.entitiesInfos[entity]; exist {
+		return structInfo.IdentifierColumn()
 	}
-	return ``
+	return
 }
 
 func (gd *DaoQueryHelper) GetEntityTable(queryObj any) (string, bool) {
@@ -231,7 +231,7 @@ func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
-func getFieldInfo(field reflect.StructField) fieldInfo {
+func getFieldInfo(field reflect.StructField) FieldInfo {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
 	var isPrimaryKey, autoFill, isLogicDel bool
@@ -263,7 +263,7 @@ func getFieldInfo(field reflect.StructField) fieldInfo {
 		}
 	}
 
-	return fieldInfo{
+	return FieldInfo{
 		JSONField:    jsonField,
 		TableField:   tableFiled,
 		Type:         field.Type.Name(),
@@ -454,7 +454,7 @@ func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUse
 	eqClause = make(sq.Eq)
 	setMap = make(map[string]interface{})
 	for i := 0; i < intfType.NumField(); i++ {
-		var filedCfg fieldInfo
+		var filedCfg FieldInfo
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
