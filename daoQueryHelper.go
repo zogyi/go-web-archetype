@@ -32,6 +32,7 @@ const (
 	TagArchType           string = `archType`
 	TagPrimaryKey         string = `primaryKey`
 	TagAutoFilled         string = `autoFill`
+	DefaultUsername       string = `system`
 )
 
 type FieldInfo struct {
@@ -57,6 +58,15 @@ func (strFieldInfo *structInfo) GetColumns() (columns []string) {
 		columns = append(columns, info.TableField)
 	}
 	return columns
+}
+
+func (strFieldInfo *structInfo) IsLogicDelete() bool {
+	for _, info := range strFieldInfo.autoFilledFields {
+		if info.IsLogicDel {
+			return true
+		}
+	}
+	return false
 }
 
 func (strFieldInfo *structInfo) IdentifierColumn() (fieldInfo FieldInfo, exist bool) {
@@ -172,7 +182,7 @@ func (gd *DaoQueryHelper) AddCustomType(types ...interface{}) *DaoQueryHelper {
 		var structInfo structInfo
 		for k := 0; k < crtType.NumField(); k++ {
 			crtField := crtType.Field(k)
-			crtFieldInfo := getFieldInfo(crtField)
+			crtFieldInfo := extractFieldsInfo(crtField)
 			structInfo.addField(crtFieldInfo)
 		}
 		gd.entitiesInfos[currentTypeName] = structInfo
@@ -223,7 +233,7 @@ func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 				panic(`can't found the required type`)
 			}
 		} else {
-			fieldInfo := getFieldInfo(currentField)
+			fieldInfo := extractFieldsInfo(currentField)
 			structInfo.addField(fieldInfo)
 		}
 	}
@@ -231,7 +241,7 @@ func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
-func getFieldInfo(field reflect.StructField) FieldInfo {
+func extractFieldsInfo(field reflect.StructField) FieldInfo {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
 	var isPrimaryKey, autoFill, isLogicDel bool
@@ -298,10 +308,11 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 	}
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
+	entitiesInfos := gd.entitiesInfos[table]
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
 		err                   error
-		eqClause              sq.Eq
+		eqClause              = sq.Eq{}
 	)
 
 	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, Query{}) {
@@ -310,7 +321,13 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 		}
 	}
 
-	eqClause, _, _ = gd.validate(queryObj, Select, extraQuery.CurrentUsername)
+	fieldValMap := gd.validate(queryObj)
+	for fieldInfo, value := range fieldValMap {
+		eqClause[fieldInfo.TableField] = value
+	}
+	if entitiesInfos.IsLogicDelete() {
+		eqClause[FixedColumnDel] = false
+	}
 	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
@@ -356,11 +373,10 @@ func (gd *DaoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) 
 func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
+	entityInfos := gd.entitiesInfos[entityName]
 	var (
-		querySqlizer  sq.Sqlizer
-		fieldVal      sq.Eq
-		setMap        map[string]interface{}
-		hasPrimaryKey bool
+		querySqlizer sq.Sqlizer
+		setMap       = sq.Eq{}
 	)
 
 	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
@@ -369,15 +385,31 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 		}
 	}
 
-	fieldVal, setMap, hasPrimaryKey = gd.validate(queryObj, Update, extraQueryWrapper.CurrentUsername)
-	if hasPrimaryKey {
-		eqClause := map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: fieldVal[gd.entitiesInfos[entityName].primaryKey.TableField]}
-		return sq.Update(table).SetMap(setMap).Where(eqClause).ToSql()
+	fieldValMap := gd.validate(queryObj)
+	for fieldInfo, val := range fieldValMap {
+		if fieldInfo.AutoFilled {
+			if fieldInfo.IsPrimaryKey {
+				querySqlizer = sq.Eq{fieldInfo.TableField: val}
+				continue
+			}
+			errors.New(`don't set value for an auto filled field`)
+			return
+		}
+		setMap[fieldInfo.TableField] = val
 	}
 
 	if !gd.allowFullTableExecute && querySqlizer == nil {
 		err = errors.New(`condition is empty`)
 		return
+	}
+
+	//TODO: extract this block into a common method
+	for _, val := range entityInfos.autoFilledFields {
+		if val.TableField == FixedColumnUpdateTime {
+			setMap[FixedColumnUpdateTime] = time.Now()
+		} else if val.TableField == FixedColumnUpdateBy {
+			setMap[FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
+		}
 	}
 	builder := sq.Update(table).SetMap(setMap)
 	if querySqlizer != nil {
@@ -390,17 +422,39 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
-	_, setMap, _ := gd.validate(queryObj, Insert, extraQueryWrapper.CurrentUsername)
+	entityInfos := gd.entitiesInfos[entityName]
+
+	fieldValMap := gd.validate(queryObj)
+	setMap := sq.Eq{}
+
+	for fieldInfo, val := range fieldValMap {
+		if fieldInfo.AutoFilled {
+			errors.New(`don't set value for an auto filled field`)
+			return
+		}
+		setMap[fieldInfo.TableField] = val
+	}
+
+	//TODO: extract this block into a common method
+	for _, val := range entityInfos.autoFilledFields {
+		if val.TableField == FixedColumnCreateTime {
+			setMap[FixedColumnCreateTime] = time.Now()
+		} else if val.TableField == FixedColumnCreateBy {
+			setMap[FixedColumnCreateBy] = extraQueryWrapper.CurrentUsername
+		} else if val.TableField == FixedColumnDel {
+			setMap[FixedColumnDel] = false
+		}
+	}
 	return sq.Insert(table).SetMap(setMap).ToSql()
 }
 
 func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
+	entityInfo := gd.entitiesInfos[entityName]
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
-		eqClause              sq.Eq
-		hasPrimaryKey         bool
+		eqClause              = sq.Eq{}
 	)
 
 	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
@@ -409,11 +463,17 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 		}
 	}
 
-	eqClause, _, hasPrimaryKey = gd.validate(queryObj, Delete, extraQueryWrapper.CurrentUsername)
-	if hasPrimaryKey {
-		eqClause := map[string]interface{}{gd.entitiesInfos[entityName].primaryKey.TableField: eqClause[gd.entitiesInfos[entityName].primaryKey.TableField]}
-		return sq.Delete(table).Where(eqClause).ToSql()
+	fieldValMap := gd.validate(queryObj)
+	for fieldInfo, val := range fieldValMap {
+		if fieldInfo.AutoFilled {
+			if fieldInfo.IsPrimaryKey {
+				eqClause = sq.Eq{fieldInfo.TableField: val}
+				break
+			}
+		}
+		eqClause[fieldInfo.TableField] = val
 	}
+
 	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
 		andSqlizer = append(andSqlizer, eqClause, querySqlizer)
@@ -428,16 +488,20 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 			err = errors.New(`condition is empty`)
 			return
 		}
-		return sq.Delete(table).ToSql()
+		sqlizer = sq.Eq{}
+	}
+	if entityInfo.IsLogicDelete() {
+		andSqlizer := sq.And{}
+		andSqlizer = append(andSqlizer, sqlizer, sq.Eq{FixedColumnDel: false})
+		sqlizer = andSqlizer
+		return sq.Update(table).Set(FixedColumnDel, true).Where(sqlizer).ToSql()
 	}
 	return sq.Delete(table).Where(sqlizer).ToSql()
 }
 
-func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUser string) (eqClause sq.Eq, setMap map[string]interface{}, primaryKeyValid bool) {
+func (gd *DaoQueryHelper) validate(queryObj any) (result map[FieldInfo]any) {
 	intfType := reflect.TypeOf(queryObj)
 	intfVal := reflect.ValueOf(queryObj)
-	//whereClause := sq.Eq{}
-	//setClause := make(map[string]interface)
 	var returnIntf reflect.Value
 	if intfType.Kind() == reflect.Struct {
 		returnIntf = reflect.New(intfType)
@@ -448,66 +512,25 @@ func (gd *DaoQueryHelper) validate(queryObj any, operation Operation, executeUse
 	if structFields, ok = gd.entitiesInfos[intfType.Name()]; !ok {
 		panic(`can't find the fields configuration for the struct ` + intfType.Name())
 	}
-	if strings.TrimSpace(executeUser) == `` {
-		executeUser = `system`
-	}
-	eqClause = make(sq.Eq)
-	setMap = make(map[string]interface{})
+
+	result = make(map[FieldInfo]any)
 	for i := 0; i < intfType.NumField(); i++ {
 		var filedCfg FieldInfo
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
-			subEqClause, subSetMap, subPrimaryKeyValid := gd.validate(crtFiledVal.Interface(), operation, executeUser)
-			for k, v := range subEqClause {
-				eqClause[k] = v
+			subResult := gd.validate(crtFiledVal.Interface())
+			for k, v := range subResult {
+				result[k] = v
 			}
-			for k, v := range subSetMap {
-				setMap[k] = v
-			}
-			primaryKeyValid = primaryKeyValid || subPrimaryKeyValid
 			continue
 		}
 		if filedCfg, ok = structFields.fieldInfos[crtFiledType.Name]; !ok {
 			panic(fmt.Sprintf(`can't find the configuration for the struct %s of field %s`, intfType.Name(), crtFiledType.Name))
 		}
-		if filedCfg.AutoFilled {
-			if (strings.ToLower(filedCfg.TableField) == FixedColumnUpdateBy && (operation == Delete || operation == Update)) ||
-				(strings.ToLower(filedCfg.TableField) == FixedColumnCreateBy && operation == Insert) {
-				setMap[filedCfg.TableField] = executeUser
-			}
-			if (strings.ToLower(filedCfg.TableField) == FixedColumnUpdateTime && (operation == Delete || operation == Update)) ||
-				(strings.ToLower(filedCfg.TableField) == FixedColumnCreateTime && operation == Insert) {
-				setMap[filedCfg.TableField] = time.Now()
-			}
-			if strings.ToLower(filedCfg.TableField) == FixedColumnDel {
-				if operation != Insert {
-					eqClause[filedCfg.TableField] = false
-				}
-				if operation == Delete {
-					setMap[filedCfg.TableField] = true
-				}
-			}
-			continue
-		}
-		if filedCfg.IsPrimaryKey {
-			primaryKeyValid = !crtFiledVal.IsZero()
-			if operation != Insert && primaryKeyValid {
-				eqClause[filedCfg.TableField] = crtFiledVal.Interface()
-			}
-			if operation == Insert && primaryKeyValid && filedCfg.AutoFilled {
-				panic(`don't set a value for the primary key when it set as autoFilled`)
-			}
-			continue
-		}
 		if !crtFiledVal.IsZero() {
-			if operation == Insert || operation == Update {
-				setMap[filedCfg.TableField] = crtFiledVal.Interface()
-			}
-			if operation == Delete || operation == Select {
-				eqClause[filedCfg.TableField] = crtFiledVal.Interface()
-			}
+			result[filedCfg] = crtFiledVal.Interface()
 		}
 	}
-	return eqClause, setMap, primaryKeyValid
+	return
 }
