@@ -7,7 +7,7 @@ import (
 )
 
 func TestToSql(t *testing.T) {
-	jsonString := `	{
+	jsonString := `{
 	  "connector": "AND",
 	  "conditions": [
 	    {

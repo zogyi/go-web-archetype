@@ -20,7 +20,7 @@ const (
 )
 
 type CommonFields struct {
-	Id         null.Int        `json:"id" archType:"primaryKey"`
+	Id         null.Int        `json:"id" archType:"primaryKey,autoFill"`
 	CreateTime util.MyNullTime `json:"createTime" db:"create_time" archType:"autoFill"`
 	CreatorBy  null.String     `json:"createBy" db:"create_by" archType:"autoFill"`
 	UpdateTime util.MyNullTime `json:"updateTime" db:"update_time" archType:"autoFill"`

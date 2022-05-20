@@ -32,7 +32,7 @@ const (
 //SqlTranslate a interface to translate the json fields to the where conditions
 type SqlTranslate interface {
 	//ToSQL the json field to the field info map is require to execute this method
-	ToSQL(map[string]fieldInfo) (sq.Sqlizer, error)
+	ToSQL(map[string]FieldInfo) (sq.Sqlizer, error)
 }
 
 type QueryItem struct {
@@ -73,7 +73,7 @@ func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-func (qi QueryItem) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err error) {
+func (qi QueryItem) ToSQL(json2Fields map[string]FieldInfo) (sqlizer sq.Sqlizer, err error) {
 	var column string
 	if fieldInfo, exist := json2Fields[qi.Field]; exist {
 		column = fieldInfo.TableField
@@ -183,7 +183,7 @@ func (m *Query) UnmarshalJSON(data []byte) (err error) {
 }
 
 //func (qi QueryItem)ToSQL()(sqlizer sq.Sqlizer, err error)
-func (qj Query) ToSQL(json2Fields map[string]fieldInfo) (sqlizer sq.Sqlizer, err error) {
+func (qj Query) ToSQL(json2Fields map[string]FieldInfo) (sqlizer sq.Sqlizer, err error) {
 	if qj.Condition == nil || len(qj.Condition) == 0 {
 		return nil, errors.New(`condition array is empty`)
 	} else if len(qj.Condition) == 1 {
