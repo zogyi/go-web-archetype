@@ -45,8 +45,13 @@ type QueryExecutorImpl struct {
 type QueryExecutor interface {
 	DB() *sqlx.DB
 
+	SelectBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error)
 	SelectByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error)
+
+	GetBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error)
 	GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error)
+
+	ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error)
 	ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error)
 
 	Get(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (exist bool, err error)
@@ -92,6 +97,17 @@ func (exector *QueryExecutorImpl) GetIdentifier(entity any) (FieldInfo, bool) {
 	return exector.queryHelper.GetIdentifier(reflect.TypeOf(entity).Name())
 }
 
+func (executor *QueryExecutorImpl) SelectBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error) {
+	var (
+		sql  string
+		args []interface{}
+	)
+	if sql, args, err = sqlizer.ToSql(); err == nil {
+		return executor.SelectByQuery(ctx, resultSet, sql, args...)
+	}
+	return
+}
+
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
 	if tx, ok := util.ExtractTx(ctx); ok {
@@ -108,12 +124,34 @@ func (executor *QueryExecutorImpl) GetByQuery(ctx context.Context, resultSet any
 	return get(executor.db, query, args, resultSet)
 }
 
+func (executor *QueryExecutorImpl) GetBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error) {
+	var (
+		sql  string
+		args []interface{}
+	)
+	if sql, args, err = sqlizer.ToSql(); err == nil {
+		return executor.GetByQuery(ctx, resultSet, sql, args...)
+	}
+	return
+}
+
 //ExecuteByQuery execute a query and return execute result and error, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
 	if tx, ok := util.ExtractTx(ctx); ok {
 		return executeQuery(tx, query, args)
 	}
 	return executeQuery(executor.db, query, args)
+}
+
+func (executor *QueryExecutorImpl) ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error) {
+	var (
+		sql  string
+		args []interface{}
+	)
+	if sql, args, err = sqlizer.ToSql(); err == nil {
+		return executor.ExecuteByQuery(ctx, sql, args...)
+	}
+	return
 }
 
 //Get support single tables query, generate the query according to the query object and the query wrapper

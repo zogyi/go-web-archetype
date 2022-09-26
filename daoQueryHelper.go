@@ -308,7 +308,7 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 	}
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
-	entitiesInfos := gd.entitiesInfos[table]
+	entitiesInfos := gd.entitiesInfos[entityName]
 	var (
 		sqlizer, querySqlizer sq.Sqlizer
 		err                   error
@@ -390,10 +390,8 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 		if fieldInfo.AutoFilled {
 			if fieldInfo.IsPrimaryKey {
 				querySqlizer = sq.Eq{fieldInfo.TableField: val}
-				continue
 			}
-			errors.New(`don't set value for an auto filled field`)
-			return
+			continue
 		}
 		setMap[fieldInfo.TableField] = val
 	}
@@ -429,7 +427,7 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQuery
 
 	for fieldInfo, val := range fieldValMap {
 		if fieldInfo.AutoFilled {
-			errors.New(`don't set value for an auto filled field`)
+			err = errors.New(`don't set value for an auto filled field`)
 			return
 		}
 		setMap[fieldInfo.TableField] = val
