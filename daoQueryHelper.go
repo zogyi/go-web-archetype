@@ -427,7 +427,7 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQuery
 
 	for fieldInfo, val := range fieldValMap {
 		if fieldInfo.AutoFilled {
-			errors.New(`don't set value for an auto filled field`)
+			err = errors.New(`don't set value for an auto filled field`)
 			return
 		}
 		setMap[fieldInfo.TableField] = val
