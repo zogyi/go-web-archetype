@@ -5,51 +5,18 @@ import (
 	"fmt"
 	sq "github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/zogyi/go-web-archetype/base"
 	"github.com/zogyi/go-web-archetype/util"
 	"reflect"
 	"strings"
 	"time"
 )
 
-type QueryExtension struct {
-	Query   Query     `json:"query"`
-	GroupBy []string  `json:"groupBy"`
-	OrderBy []OrderBy `json:"orderBy"`
-}
-
-type ExtraQueryWrapper struct {
-	CurrentUsername string
-	Pagination      util.Pagination
-	QueryExtension  QueryExtension
-}
-
-const (
-	FixedColumnCreateBy   string = `create_by`
-	FixedColumnUpdateBy   string = `update_by`
-	FixedColumnCreateTime string = `create_time`
-	FixedColumnUpdateTime string = `update_time`
-	FixedColumnDel        string = `del`
-	TagArchType           string = `archType`
-	TagPrimaryKey         string = `primaryKey`
-	TagAutoFilled         string = `autoFill`
-	DefaultUsername       string = `system`
-)
-
-type FieldInfo struct {
-	Field        string
-	JSONField    string
-	TableField   string
-	Type         string
-	IsLogicDel   bool
-	IsPrimaryKey bool
-	AutoFilled   bool
-}
-
 type structInfo struct {
-	fieldInfos       map[string]FieldInfo //所有的字段集合
-	jsonFieldInfos   map[string]FieldInfo //所有的字段集合
-	primaryKey       FieldInfo            //主键字段
-	autoFilledFields map[string]FieldInfo //自动填充字段
+	fieldInfos       map[string]base.FieldInfo //所有的字段集合
+	jsonFieldInfos   map[string]base.FieldInfo //所有的字段集合
+	primaryKey       base.FieldInfo            //主键字段
+	autoFilledFields map[string]base.FieldInfo //自动填充字段
 	LogicDel         bool
 }
 
@@ -69,7 +36,7 @@ func (strFieldInfo *structInfo) IsLogicDelete() bool {
 	return false
 }
 
-func (strFieldInfo *structInfo) IdentifierColumn() (fieldInfo FieldInfo, exist bool) {
+func (strFieldInfo *structInfo) IdentifierColumn() (fieldInfo base.FieldInfo, exist bool) {
 	for _, info := range strFieldInfo.fieldInfos {
 		if info.IsPrimaryKey {
 			return info, true
@@ -78,23 +45,23 @@ func (strFieldInfo *structInfo) IdentifierColumn() (fieldInfo FieldInfo, exist b
 	return
 }
 
-func (strFieldInfo *structInfo) addField(fInfo FieldInfo) {
-	if (FieldInfo{}) == fInfo {
+func (strFieldInfo *structInfo) addField(fInfo base.FieldInfo) {
+	if (base.FieldInfo{}) == fInfo {
 		panic(`the param fInfo is null`)
 	}
 	if strFieldInfo.fieldInfos == nil {
-		strFieldInfo.fieldInfos = make(map[string]FieldInfo)
+		strFieldInfo.fieldInfos = make(map[string]base.FieldInfo)
 	}
 	if strFieldInfo.jsonFieldInfos == nil {
-		strFieldInfo.jsonFieldInfos = make(map[string]FieldInfo)
+		strFieldInfo.jsonFieldInfos = make(map[string]base.FieldInfo)
 	}
 	if strFieldInfo.autoFilledFields == nil {
-		strFieldInfo.autoFilledFields = make(map[string]FieldInfo)
+		strFieldInfo.autoFilledFields = make(map[string]base.FieldInfo)
 	}
 	strFieldInfo.fieldInfos[fInfo.Field] = fInfo
 	strFieldInfo.jsonFieldInfos[fInfo.JSONField] = fInfo
 	if fInfo.IsPrimaryKey {
-		if (FieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField {
+		if (base.FieldInfo{} != strFieldInfo.primaryKey) && strFieldInfo.primaryKey.TableField != fInfo.TableField {
 			panic(fmt.Sprintf(`the field set as primary key can't more than 1, the existing primary key is %s and the new primary key is %s`, strFieldInfo.primaryKey.TableField, fInfo.TableField))
 		}
 		strFieldInfo.primaryKey = fInfo
@@ -108,7 +75,6 @@ func (strFieldInfo *structInfo) addField(fInfo FieldInfo) {
 }
 
 type entitiesInfo map[string]structInfo
-
 type DaoQueryHelper struct {
 	bondEntities       []interface{}     //所有的entity
 	entityTableMapping map[string]string //entity与table名字之间的映射
@@ -131,7 +97,7 @@ func (gd *DaoQueryHelper) setFullTableExecute(fullExecute bool) {
 	gd.allowFullTableExecute = fullExecute
 }
 
-func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (FieldInfo, bool) {
+func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (base.FieldInfo, bool) {
 	if structInfo, exist := gd.entitiesInfos[structName]; exist {
 		for _, fieldInfo := range structInfo.fieldInfos {
 			if fieldInfo.JSONField == jsonName {
@@ -139,7 +105,7 @@ func (gd *DaoQueryHelper) getFieldInfo(structName string, jsonName string) (Fiel
 			}
 		}
 	}
-	return FieldInfo{}, false
+	return base.FieldInfo{}, false
 }
 
 func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist bool) {
@@ -149,7 +115,7 @@ func (gd *DaoQueryHelper) GetColumns(entity string) (columns []string, exist boo
 	return columns, false
 }
 
-func (gd *DaoQueryHelper) GetIdentifier(entity string) (filedInfo FieldInfo, exist bool) {
+func (gd *DaoQueryHelper) GetIdentifier(entity string) (filedInfo base.FieldInfo, exist bool) {
 	if structInfo, exist := gd.entitiesInfos[entity]; exist {
 		return structInfo.IdentifierColumn()
 	}
@@ -241,7 +207,7 @@ func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
-func extractFieldsInfo(field reflect.StructField) FieldInfo {
+func extractFieldsInfo(field reflect.StructField) base.FieldInfo {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
 	var isPrimaryKey, autoFill, isLogicDel bool
@@ -251,7 +217,7 @@ func extractFieldsInfo(field reflect.StructField) FieldInfo {
 		tableFiled = dbTag
 	}
 
-	if tableFiled == FixedColumnDel {
+	if tableFiled == base.FixedColumnDel {
 		isLogicDel = true
 	}
 
@@ -259,21 +225,21 @@ func extractFieldsInfo(field reflect.StructField) FieldInfo {
 	if strings.TrimSpace(jsonTag) != `` || strings.TrimSpace(jsonTag) != `-` {
 		jsonField = jsonTag
 	}
-	sqlTag := field.Tag.Get(TagArchType)
+	sqlTag := field.Tag.Get(base.TagArchType)
 	if strings.TrimSpace(sqlTag) != `` {
 		sqlItems := strings.Split(strings.TrimSpace(sqlTag), `,`)
-		if util.StringInSlice(TagPrimaryKey, sqlItems) {
+		if util.StringInSlice(base.TagPrimaryKey, sqlItems) {
 			isPrimaryKey = true
 		}
-		if util.StringInSlice(TagAutoFilled, sqlItems) {
+		if util.StringInSlice(base.TagAutoFilled, sqlItems) {
 			autoFill = true
 		}
 		if !isPrimaryKey && !autoFill {
-			panic(fmt.Sprintf(`unrecognized tag value: <%s>, the right format looks like this: "%s:%s,%s"`, sqlTag, TagArchType, TagPrimaryKey, TagAutoFilled))
+			panic(fmt.Sprintf(`unrecognized tag value: <%s>, the right format looks like this: "%s:%s,%s"`, sqlTag, base.TagArchType, base.TagPrimaryKey, base.TagAutoFilled))
 		}
 	}
 
-	return FieldInfo{
+	return base.FieldInfo{
 		JSONField:    jsonField,
 		TableField:   tableFiled,
 		Type:         field.Type.Name(),
@@ -283,7 +249,7 @@ func extractFieldsInfo(field reflect.StructField) FieldInfo {
 		IsLogicDel:   isLogicDel}
 }
 
-func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).
 		FromSelect(builder, `t1`).
@@ -292,17 +258,17 @@ func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery ExtraQueryWra
 
 }
 
-func (gd *DaoQueryHelper) count(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) count(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`count(*) as totalCount`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
+func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if len(columns) <= 0 {
 		columns = []string{`*`}
 	}
@@ -315,7 +281,7 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 		eqClause              = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, Query{}) {
+	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, base.Query{}) {
 		if querySqlizer, err = extraQuery.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
@@ -326,7 +292,7 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 		eqClause[fieldInfo.TableField] = value
 	}
 	if entitiesInfos.IsLogicDelete() {
-		eqClause[FixedColumnDel] = false
+		eqClause[base.FixedColumnDel] = false
 	}
 	if querySqlizer != nil && eqClause != nil && len(eqClause) > 0 {
 		andSqlizer := sq.And{}
@@ -346,7 +312,7 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery Extra
 	selectBuilder = selectBuilder.GroupBy(currentColumns...)
 	subOrderBy := make([]string, 0)
 	for _, orderByItem := range extraQuery.QueryExtension.OrderBy {
-		orderByItem.setColumn(gd.jsonFields2Columns(queryObj, orderByItem.JSONFields))
+		orderByItem.SetColumn(gd.jsonFields2Columns(queryObj, orderByItem.JSONFields))
 		crtOrderSQL := orderByItem.ToSql()
 		if strings.TrimSpace(crtOrderSQL) != `` {
 			subOrderBy = append(subOrderBy, crtOrderSQL)
@@ -370,7 +336,7 @@ func (gd *DaoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) 
 }
 
 //update remove the common fields
-func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
@@ -379,7 +345,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 		setMap       = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
+	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, base.Query{}) {
 		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
@@ -403,10 +369,10 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 
 	//TODO: extract this block into a common method
 	for _, val := range entityInfos.autoFilledFields {
-		if val.TableField == FixedColumnUpdateTime {
-			setMap[FixedColumnUpdateTime] = time.Now()
-		} else if val.TableField == FixedColumnUpdateBy {
-			setMap[FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
+		if val.TableField == base.FixedColumnUpdateTime {
+			setMap[base.FixedColumnUpdateTime] = time.Now()
+		} else if val.TableField == base.FixedColumnUpdateBy {
+			setMap[base.FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
 		}
 	}
 	builder := sq.Update(table).SetMap(setMap)
@@ -417,7 +383,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper ExtraQuery
 	return builder.ToSql()
 }
 
-func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
@@ -435,18 +401,18 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper ExtraQuery
 
 	//TODO: extract this block into a common method
 	for _, val := range entityInfos.autoFilledFields {
-		if val.TableField == FixedColumnCreateTime {
-			setMap[FixedColumnCreateTime] = time.Now()
-		} else if val.TableField == FixedColumnCreateBy {
-			setMap[FixedColumnCreateBy] = extraQueryWrapper.CurrentUsername
-		} else if val.TableField == FixedColumnDel {
-			setMap[FixedColumnDel] = false
+		if val.TableField == base.FixedColumnCreateTime {
+			setMap[base.FixedColumnCreateTime] = time.Now()
+		} else if val.TableField == base.FixedColumnCreateBy {
+			setMap[base.FixedColumnCreateBy] = extraQueryWrapper.CurrentUsername
+		} else if val.TableField == base.FixedColumnDel {
+			setMap[base.FixedColumnDel] = false
 		}
 	}
 	return sq.Insert(table).SetMap(setMap).ToSql()
 }
 
-func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
 	entityName := reflect.TypeOf(queryObj).Name()
 	table := gd.entityTableMapping[entityName]
 	entityInfo := gd.entitiesInfos[entityName]
@@ -455,7 +421,7 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 		eqClause              = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, Query{}) {
+	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, base.Query{}) {
 		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
@@ -490,14 +456,14 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper ExtraQuery
 	}
 	if entityInfo.IsLogicDelete() {
 		andSqlizer := sq.And{}
-		andSqlizer = append(andSqlizer, sqlizer, sq.Eq{FixedColumnDel: false})
+		andSqlizer = append(andSqlizer, sqlizer, sq.Eq{base.FixedColumnDel: false})
 		sqlizer = andSqlizer
-		return sq.Update(table).Set(FixedColumnDel, true).Where(sqlizer).ToSql()
+		return sq.Update(table).Set(base.FixedColumnDel, true).Where(sqlizer).ToSql()
 	}
 	return sq.Delete(table).Where(sqlizer).ToSql()
 }
 
-func (gd *DaoQueryHelper) validate(queryObj any) (result map[FieldInfo]any) {
+func (gd *DaoQueryHelper) validate(queryObj any) (result map[base.FieldInfo]any) {
 	intfType := reflect.TypeOf(queryObj)
 	intfVal := reflect.ValueOf(queryObj)
 	var returnIntf reflect.Value
@@ -511,9 +477,9 @@ func (gd *DaoQueryHelper) validate(queryObj any) (result map[FieldInfo]any) {
 		panic(`can't find the fields configuration for the struct ` + intfType.Name())
 	}
 
-	result = make(map[FieldInfo]any)
+	result = make(map[base.FieldInfo]any)
 	for i := 0; i < intfType.NumField(); i++ {
-		var filedCfg FieldInfo
+		var filedCfg base.FieldInfo
 		crtFiledType := intfType.Field(i)
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {

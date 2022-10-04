@@ -6,7 +6,7 @@ import (
 	"fmt"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
-	"github.com/zogyi/go-web-archetype/util"
+	"github.com/zogyi/go-web-archetype/base"
 	"go.uber.org/zap"
 	"reflect"
 )
@@ -54,19 +54,19 @@ type QueryExecutor interface {
 	ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error)
 	ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error)
 
-	Get(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (exist bool, err error)
-	MustGet(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error)
-	SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error)
-	Select(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error)
-	Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
-	Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
-	Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error)
+	Get(ctx context.Context, queryObj any, resultSet any) (exist bool, err error)
+	MustGet(ctx context.Context, queryObj any, resultSet any) (err error)
+	SelectPage(ctx context.Context, queryObj any, resultSet any) (total uint64, err error)
+	Select(ctx context.Context, queryObj any, resultSet any) (err error)
+	Update(ctx context.Context, queryObj any) (result sql.Result, err error)
+	Delete(ctx context.Context, queryObj any) (result sql.Result, err error)
+	Insert(ctx context.Context, queryObj any) (result sql.Result, err error)
 	WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error)
 
 	GetTable(queryObj any) (string, bool)
-	TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder
+	TransferToSelectBuilder(queryObj any, wrapper base.ExtraQueryWrapper, columns ...string) sq.SelectBuilder
 	GetColumns(entity any) ([]string, bool)
-	GetIdentifier(entity any) (FieldInfo, bool)
+	GetIdentifier(entity any) (base.FieldInfo, bool)
 }
 
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
@@ -84,7 +84,7 @@ func (executor *QueryExecutorImpl) GetTable(queryObj any) (table string, exist b
 }
 
 //TransferToSelectBuilder create select builder according to the query object and the query wrapper
-func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper ExtraQueryWrapper, columns ...string) sq.SelectBuilder {
+func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper base.ExtraQueryWrapper, columns ...string) sq.SelectBuilder {
 	return excutor.queryHelper.TransferToSelectBuilder(queryObj, wrapper, columns...)
 }
 
@@ -93,7 +93,7 @@ func (excutor *QueryExecutorImpl) GetColumns(entity any) (columns []string, exis
 	return excutor.queryHelper.GetColumns(reflect.TypeOf(entity).Name())
 }
 
-func (exector *QueryExecutorImpl) GetIdentifier(entity any) (FieldInfo, bool) {
+func (exector *QueryExecutorImpl) GetIdentifier(entity any) (base.FieldInfo, bool) {
 	return exector.queryHelper.GetIdentifier(reflect.TypeOf(entity).Name())
 }
 
@@ -110,7 +110,7 @@ func (executor *QueryExecutorImpl) SelectBySqlBuilder(ctx context.Context, resul
 
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
-	if tx, ok := util.ExtractTx(ctx); ok {
+	if tx, ok := base.ExtractTx(ctx); ok {
 		return selectList(tx, query, args, resultSet)
 	}
 	return selectList(executor.db, query, args, resultSet)
@@ -118,7 +118,7 @@ func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet 
 
 //GetByQuery get query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
-	if tx, ok := util.ExtractTx(ctx); ok {
+	if tx, ok := base.ExtractTx(ctx); ok {
 		return get(tx, query, args, resultSet)
 	}
 	return get(executor.db, query, args, resultSet)
@@ -137,7 +137,7 @@ func (executor *QueryExecutorImpl) GetBySqlBuilder(ctx context.Context, resultSe
 
 //ExecuteByQuery execute a query and return execute result and error, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
-	if tx, ok := util.ExtractTx(ctx); ok {
+	if tx, ok := base.ExtractTx(ctx); ok {
 		return executeQuery(tx, query, args)
 	}
 	return executeQuery(executor.db, query, args)
@@ -156,11 +156,15 @@ func (executor *QueryExecutorImpl) ExecuteBySqlBuilder(ctx context.Context, sqli
 
 //Get support single tables query, generate the query according to the query object and the query wrapper
 // using the query object to get the table name, add the column and value to the equal conditions of query criteria if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) Get(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (exist bool, err error) {
+func (executor *QueryExecutorImpl) Get(ctx context.Context, queryObj any, resultSet any) (exist bool, err error) {
 	var (
-		query string
-		args  []interface{}
+		query        string
+		args         []interface{}
+		queryWrapper = base.ExtraQueryWrapper{}
 	)
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
 	if query, args, err = executor.queryHelper.selectQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
@@ -176,11 +180,16 @@ func (executor *QueryExecutorImpl) Get(ctx context.Context, queryObj any, queryW
 
 //MustGet support single tables query, generate the query according to the query object and the query wrapper
 // using the query object to get the table name, add the column and value to the equal conditions of query criteria if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) MustGet(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
+func (executor *QueryExecutorImpl) MustGet(ctx context.Context, queryObj any, resultSet any) (err error) {
 	var (
-		sql  string
-		args []interface{}
+		sql          string
+		args         []interface{}
+		queryWrapper = base.ExtraQueryWrapper{}
 	)
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+
 	if sql, args, err = executor.queryHelper.selectQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
@@ -189,14 +198,19 @@ func (executor *QueryExecutorImpl) MustGet(ctx context.Context, queryObj any, qu
 
 //SelectPage support single tables query, generate the query according to the query object and the query wrapper, get the total count along with the query result
 // using the query object to get the table name, add the column and value to the equal conditions of query criteria if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (total uint64, err error) {
+func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any, resultSet any) (total uint64, err error) {
 	var (
-		sql  string
-		args []interface{}
+		sql          string
+		args         []interface{}
+		queryWrapper = base.ExtraQueryWrapper{}
 	)
 	if queryWrapper.Pagination.PageSize <= 0 {
 		queryWrapper.Pagination.PageSize = 10
 	}
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+
 	if sql, args, err = executor.queryHelper.count(queryObj, queryWrapper); err != nil {
 		return
 	}
@@ -211,11 +225,15 @@ func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any,
 
 //Select support single tables query, generate the query according to the query object and the query wrapper
 // using the query object to get the table name, add the column and value to the equal conditions of query criteria if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) Select(ctx context.Context, queryObj any, queryWrapper ExtraQueryWrapper, resultSet any) (err error) {
+func (executor *QueryExecutorImpl) Select(ctx context.Context, queryObj any, resultSet any) (err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
+	var queryWrapper = base.ExtraQueryWrapper{}
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
 	if sql, args, err = executor.queryHelper.selectQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
@@ -223,12 +241,16 @@ func (executor *QueryExecutorImpl) Select(ctx context.Context, queryObj any, que
 }
 
 //Update generate the update query, the set map comes from the query object and the where condition is generate by the query wrapper
-func (executor *QueryExecutorImpl) Update(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Update(ctx context.Context, queryObj any) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
-	if sql, args, err = executor.queryHelper.updateQuery(queryObj, wrapper); err != nil {
+	var queryWrapper = base.ExtraQueryWrapper{}
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+	if sql, args, err = executor.queryHelper.updateQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
 	return executor.ExecuteByQuery(ctx, sql, args...)
@@ -236,12 +258,16 @@ func (executor *QueryExecutorImpl) Update(ctx context.Context, queryObj any, wra
 
 //Delete generate delete query, only support one table's query
 // using the query object to get the table name, add the column and value to the equal conditions of query criteria if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) Delete(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Delete(ctx context.Context, queryObj any) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
-	if sql, args, err = executor.queryHelper.deleteQuery(queryObj, wrapper); err != nil {
+	var queryWrapper = base.ExtraQueryWrapper{}
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+	if sql, args, err = executor.queryHelper.deleteQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
 	return executor.ExecuteByQuery(ctx, sql, args...)
@@ -249,12 +275,16 @@ func (executor *QueryExecutorImpl) Delete(ctx context.Context, queryObj any, wra
 
 //Insert generate insert query, only support one table's query
 // using the query object to get the table name, add the column and value to the set map for the insert query if the fields has db annotation and valid value
-func (executor *QueryExecutorImpl) Insert(ctx context.Context, queryObj any, wrapper ExtraQueryWrapper) (result sql.Result, err error) {
+func (executor *QueryExecutorImpl) Insert(ctx context.Context, queryObj any) (result sql.Result, err error) {
 	var (
 		sql  string
 		args []interface{}
 	)
-	if sql, args, err = executor.queryHelper.insertQuery(queryObj, wrapper); err != nil {
+	var queryWrapper = base.ExtraQueryWrapper{}
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+	if sql, args, err = executor.queryHelper.insertQuery(queryObj, queryWrapper); err != nil {
 		return
 	}
 	return executor.ExecuteByQuery(ctx, sql, args...)
@@ -271,7 +301,7 @@ func (executor *QueryExecutorImpl) WithTxFunction(ctx context.Context, txFunc fu
 		return fmt.Errorf("begin transaction error: %w", err)
 	}
 	defer tx.Rollback()
-	if err = txFunc(util.SetTxContext(ctx, tx)); err == nil {
+	if err = txFunc(base.SetTxContext(ctx, tx)); err == nil {
 		err = tx.Commit()
 	}
 	return

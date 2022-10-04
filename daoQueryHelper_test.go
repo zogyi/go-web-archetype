@@ -3,6 +3,7 @@ package go_web_archetype
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/zogyi/go-web-archetype/base"
 	"github.com/zogyi/go-web-archetype/log"
 	"gopkg.in/guregu/null.v3"
 	"testing"
@@ -13,14 +14,14 @@ type TestStruct1 struct {
 	Field1 null.String `db:"field1" json:"field1"`
 	Field2 null.Time   `db:"field2" json:"field2"`
 	Field3 null.Bool   `db:"field3" json:"field3"`
-	CommonFields
-	CommonDel
+	base.CommonFields
+	base.CommonDel
 }
 
 type TestStruct2 struct {
 	Id     null.Int    `db:"id" json:"id" archType:"primaryKey,autoFill"`
 	Field1 null.String `db:"field1" json:"field1"`
-	CommonFields
+	base.CommonFields
 }
 
 func initGenericDao() *DaoQueryHelper {
@@ -52,7 +53,7 @@ func TestGenericDao_TransferToSelectBuilder(t *testing.T) {
 func TestGenericDao_deleteQuery(t *testing.T) {
 	dao := DaoQueryHelper{}
 	dao.setFullTableExecute(false)
-	dao.AddCustomType(CommonFields{}, CommonDel{})
+	dao.AddCustomType(base.CommonFields{}, base.CommonDel{})
 	dao.Bind(TestStruct1{}, `test`)
 
 	item1 := TestStruct1{
@@ -62,7 +63,7 @@ func TestGenericDao_deleteQuery(t *testing.T) {
 		//Field4: util.MyNullTime{Time: null.TimeFrom(setTime)},
 		//Filed5: null.IntFrom(1),
 	}
-	sql, args, err := dao.deleteQuery(item1, ExtraQueryWrapper{})
+	sql, args, err := dao.deleteQuery(item1, base.ExtraQueryWrapper{})
 	fmt.Println(sql)
 	fmt.Println(args)
 	fmt.Println(err)
@@ -71,52 +72,52 @@ func TestGenericDao_deleteQuery(t *testing.T) {
 func TestDaoQueryHelper_insertQuery(t *testing.T) {
 	dao := DaoQueryHelper{}
 	dao.setFullTableExecute(true)
-	dao.AddCustomType(CommonFields{}, CommonDel{})
+	dao.AddCustomType(base.CommonFields{}, base.CommonDel{})
 	dao.Bind(TestStruct1{}, `test`)
 	item1 := TestStruct1{
 		Field1:       null.StringFrom(`field2-1`),
 		Field2:       null.TimeFrom(time.Now()),
 		Field3:       null.BoolFrom(false),
-		CommonFields: CommonFields{Id: null.IntFrom(1)},
+		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.insertQuery(item1, ExtraQueryWrapper{}))
+	fmt.Println(dao.insertQuery(item1, base.ExtraQueryWrapper{}))
 
 	item1 = TestStruct1{
 		Field1: null.StringFrom(`field2-1`),
 	}
-	fmt.Println(dao.insertQuery(item1, ExtraQueryWrapper{}))
+	fmt.Println(dao.insertQuery(item1, base.ExtraQueryWrapper{}))
 }
 
 func TestDaoQueryHelper_updateQuery(t *testing.T) {
 	dao := DaoQueryHelper{}
-	dao.AddCustomType(CommonFields{}, CommonDel{})
+	dao.AddCustomType(base.CommonFields{}, base.CommonDel{})
 	dao.Bind(TestStruct1{}, `test`)
 	item1 := TestStruct1{
 		Field1:       null.StringFrom(`field2-1`),
-		CommonFields: CommonFields{Id: null.IntFrom(1)},
+		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.updateQuery(item1, ExtraQueryWrapper{}))
+	fmt.Println(dao.updateQuery(item1, base.ExtraQueryWrapper{}))
 
 	item1 = TestStruct1{}
-	fmt.Println(dao.updateQuery(item1, ExtraQueryWrapper{}))
+	fmt.Println(dao.updateQuery(item1, base.ExtraQueryWrapper{}))
 }
 
 func TestDaoQueryHelper_selectQuery(t *testing.T) {
 	dao := DaoQueryHelper{}
-	dao.AddCustomType(CommonFields{}, CommonDel{})
+	dao.AddCustomType(base.CommonFields{}, base.CommonDel{})
 	dao.Bind(TestStruct1{}, `test`)
 
 	item1 := TestStruct1{
 		Field1:       null.StringFrom(`field2-1`),
-		CommonFields: CommonFields{Id: null.IntFrom(1)},
+		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.selectQuery(item1, ExtraQueryWrapper{}))
+	fmt.Println(dao.selectQuery(item1, base.ExtraQueryWrapper{}))
 
 	//item1 = TestStruct1{}
 	//fmt.Println(dao.updateQuery(item1, ExtraQueryWrapper{}))
 }
 
-func getQuery() (query Query, err error) {
+func getQuery() (query base.Query, err error) {
 	jsonString := `	{
 	  "connector": "OR",
 	  "conditions": [

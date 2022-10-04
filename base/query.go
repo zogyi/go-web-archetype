@@ -1,4 +1,4 @@
-package go_web_archetype
+package base
 
 import (
 	"encoding/json"

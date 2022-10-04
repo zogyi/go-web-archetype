@@ -1,32 +1,14 @@
 package util
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"gopkg.in/guregu/null.v3"
 	"reflect"
 	"regexp"
 	"strings"
 	"time"
 )
-
-type txContext struct {
-}
-
-func SetTxContext(ctx context.Context, tx *sqlx.Tx) context.Context {
-	return context.WithValue(ctx, txContext{}, tx)
-}
-
-func ExtractTx(ctx context.Context) (tx *sqlx.Tx, ok bool) {
-	if ctx.Value(txContext{}) != nil {
-		if tx, ok = ctx.Value(txContext{}).(*sqlx.Tx); ok {
-			return
-		}
-	}
-	return
-}
 
 type Pagination struct {
 	PageSize    uint64 `form:"pageSize"`
