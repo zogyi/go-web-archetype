@@ -20,7 +20,7 @@ type Claims struct {
 	DeviceID   string `json:"device_id"`
 	AppVersion string `json:"app_version"`
 	AppName    string `json:"app_name"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 type RefreshClaims struct {
@@ -44,8 +44,8 @@ func SignAccessToken(uid uint64, username string) (string, time.Time, error) {
 		UserName:   username,
 		AppName:    ConstantAppName,
 		AppVersion: ConstantVersion,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

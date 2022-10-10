@@ -481,6 +481,10 @@ func (gd *DaoQueryHelper) validate(queryObj any) (result map[base.FieldInfo]any)
 	for i := 0; i < intfType.NumField(); i++ {
 		var filedCfg base.FieldInfo
 		crtFiledType := intfType.Field(i)
+		dbTag := crtFiledType.Tag.Get(`db`)
+		if strings.TrimSpace(dbTag) == `` || strings.TrimSpace(dbTag) == `-` {
+			continue
+		}
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
 		if gd.containCustomType(crtFiledType.Type) {
 			subResult := gd.validate(crtFiledVal.Interface())

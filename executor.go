@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/zogyi/go-web-archetype/base"
 	"go.uber.org/zap"
+	"gopkg.in/guregu/null.v3"
 	"reflect"
 )
 
@@ -53,7 +54,7 @@ type QueryExecutor interface {
 
 	ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error)
 	ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error)
-
+	GetById(ctx context.Context, id null.Int, result any) (exist bool, err error)
 	Get(ctx context.Context, queryObj any, resultSet any) (exist bool, err error)
 	MustGet(ctx context.Context, queryObj any, resultSet any) (err error)
 	SelectPage(ctx context.Context, queryObj any, resultSet any) (total uint64, err error)
@@ -152,6 +153,29 @@ func (executor *QueryExecutorImpl) ExecuteBySqlBuilder(ctx context.Context, sqli
 		return executor.ExecuteByQuery(ctx, sql, args...)
 	}
 	return
+}
+
+func (executor *QueryExecutorImpl) GetById(ctx context.Context, id null.Int, result any) (exist bool, err error) {
+	var (
+		query        string
+		args         []interface{}
+		queryWrapper = base.ExtraQueryWrapper{QueryExtension: base.QueryExtension{Query: base.Query{Condition: []base.SqlTranslate{base.QueryItem{Field: `id`, Operator: base.QPEq, Value: id}}}}}
+	)
+	//TODO: fix me pls
+	rv := reflect.ValueOf(result)
+	newStructure := reflect.New(rv.Type().Elem())
+
+	if query, args, err = executor.queryHelper.selectQuery(newStructure, queryWrapper); err != nil {
+		return
+	}
+
+	if err = executor.GetByQuery(ctx, result, query, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return exist, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 //Get support single tables query, generate the query according to the query object and the query wrapper
