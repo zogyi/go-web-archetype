@@ -148,8 +148,9 @@ func (gd *DaoQueryHelper) AddCustomType(types ...interface{}) *DaoQueryHelper {
 		var structInfo structInfo
 		for k := 0; k < crtType.NumField(); k++ {
 			crtField := crtType.Field(k)
-			crtFieldInfo := extractFieldsInfo(crtField)
-			structInfo.addField(crtFieldInfo)
+			if crtFieldInfo, ok := extractFieldsInfo(crtField); ok {
+				structInfo.addField(crtFieldInfo)
+			}
 		}
 		gd.entitiesInfos[currentTypeName] = structInfo
 	}
@@ -199,20 +200,23 @@ func (gd *DaoQueryHelper) Bind(interf interface{}, table string) {
 				panic(`can't found the required type`)
 			}
 		} else {
-			fieldInfo := extractFieldsInfo(currentField)
-			structInfo.addField(fieldInfo)
+			if fieldInfo, ok := extractFieldsInfo(currentField); ok {
+				structInfo.addField(fieldInfo)
+			}
 		}
 	}
 	gd.entitiesInfos[crtIrf.Name()] = structInfo
 	gd.bondEntities = append(gd.bondEntities, interf)
 }
 
-func extractFieldsInfo(field reflect.StructField) base.FieldInfo {
+func extractFieldsInfo(field reflect.StructField) (base.FieldInfo, bool) {
 	dbTag := field.Tag.Get("db")
 	var tableFiled, jsonField string
 	var isPrimaryKey, autoFill, isLogicDel bool
 	if dbTag == `` {
 		tableFiled = strings.ToLower(field.Name)
+	} else if dbTag == `-` {
+		return base.FieldInfo{}, false
 	} else {
 		tableFiled = dbTag
 	}
@@ -246,7 +250,7 @@ func extractFieldsInfo(field reflect.StructField) base.FieldInfo {
 		IsPrimaryKey: isPrimaryKey,
 		AutoFilled:   autoFill,
 		Field:        field.Name,
-		IsLogicDel:   isLogicDel}
+		IsLogicDel:   isLogicDel}, true
 }
 
 func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
@@ -482,7 +486,7 @@ func (gd *DaoQueryHelper) validate(queryObj any) (result map[base.FieldInfo]any)
 		var filedCfg base.FieldInfo
 		crtFiledType := intfType.Field(i)
 		dbTag := crtFiledType.Tag.Get(`db`)
-		if strings.TrimSpace(dbTag) == `` || strings.TrimSpace(dbTag) == `-` {
+		if strings.TrimSpace(dbTag) == `-` || strings.TrimSpace(dbTag) == `` {
 			continue
 		}
 		crtFiledVal := returnIntf.Elem().FieldByName(crtFiledType.Name)
