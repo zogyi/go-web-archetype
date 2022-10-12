@@ -13,7 +13,7 @@ import (
 )
 
 type Connection interface {
-	*sqlx.DB | *sqlx.Tx
+	*sqlx.DB | *sqlx.Tx | *DummyConnection
 	Preparex(query string) (*sqlx.Stmt, error)
 	Select(dest interface{}, query string, args ...interface{}) error
 	Get(dest interface{}, query string, args ...interface{}) error
@@ -32,15 +32,23 @@ func get[T Connection](conn T, sqlQuery string, args []interface{}, result inter
 func executeQuery[T Connection](conn T, sqlQuery string, args []interface{}) (result sql.Result, err error) {
 	var statement *sqlx.Stmt
 	zap.L().Debug(fmt.Sprintf(`SQL: %s, args: %s`, sqlQuery, fmt.Sprint(args)))
-	if statement, err = conn.Preparex(sqlQuery); err != nil {
+	//support dummy connection
+	switch any(conn).(type) {
+	case *DummyConnection:
+		zap.L().Debug(`executing query in a dummy connection`)
 		return
+	default:
+		if statement, err = conn.Preparex(sqlQuery); err != nil {
+			return
+		}
+		return statement.Exec(args...)
 	}
-	return statement.Exec(args...)
 }
 
 type QueryExecutorImpl struct {
 	db          *sqlx.DB
 	queryHelper DaoQueryHelper
+	isTesting   bool
 }
 
 type QueryExecutor interface {
@@ -73,6 +81,10 @@ type QueryExecutor interface {
 func NewQueryExecutor(conn *sqlx.DB, helper DaoQueryHelper) (executor QueryExecutor) {
 	executor = &QueryExecutorImpl{db: conn, queryHelper: helper}
 	return
+}
+
+func NewQueryExecutorForTesting(helper DaoQueryHelper) (executor QueryExecutor) {
+	return &QueryExecutorImpl{queryHelper: helper, isTesting: true}
 }
 
 func (executor *QueryExecutorImpl) DB() *sqlx.DB {
@@ -111,6 +123,9 @@ func (executor *QueryExecutorImpl) SelectBySqlBuilder(ctx context.Context, resul
 
 //SelectByQuery select query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
+	if executor.isTesting {
+		return selectList(&DummyConnection{}, query, args, resultSet)
+	}
 	if tx, ok := base.ExtractTx(ctx); ok {
 		return selectList(tx, query, args, resultSet)
 	}
@@ -119,6 +134,9 @@ func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet 
 
 //GetByQuery get query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
+	if executor.isTesting {
+		return get(&DummyConnection{}, query, args, resultSet)
+	}
 	if tx, ok := base.ExtractTx(ctx); ok {
 		return get(tx, query, args, resultSet)
 	}
@@ -138,6 +156,9 @@ func (executor *QueryExecutorImpl) GetBySqlBuilder(ctx context.Context, resultSe
 
 //ExecuteByQuery execute a query and return execute result and error, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error) {
+	if executor.isTesting {
+		return executeQuery(&DummyConnection{}, query, args)
+	}
 	if tx, ok := base.ExtractTx(ctx); ok {
 		return executeQuery(tx, query, args)
 	}
@@ -162,6 +183,7 @@ func (executor *QueryExecutorImpl) GetById(ctx context.Context, id null.Int, res
 		queryWrapper = base.ExtraQueryWrapper{QueryExtension: base.QueryExtension{Query: base.Query{Condition: []base.SqlTranslate{base.QueryItem{Field: `id`, Operator: base.QPEq, Value: id}}}}}
 	)
 	//TODO: fix me pls
+	fmt.Println(reflect.Indirect(reflect.ValueOf(result)).Elem().Type())
 	rv := reflect.ValueOf(result)
 	newStructure := reflect.New(rv.Type().Elem())
 

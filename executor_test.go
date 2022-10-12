@@ -2,7 +2,6 @@ package go_web_archetype
 
 import (
 	"context"
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/zogyi/go-web-archetype/log"
 	"gopkg.in/guregu/null.v3"
@@ -20,14 +19,10 @@ type resultType struct {
 
 func prepareExecutor() QueryExecutor {
 	log.InitLog(`/Users/zhongyi/workspace/golang/go-web-archetype/logs/`, `debug`)
-	db, err := sqlx.Open(`mysql`, `<username>:<password>@tcp(<ip>:<port>)/<schema>?charset=utf8&parseTime=true`)
-	if err != nil {
-		panic(`wrong connection url`)
-	}
 	queryHelper := NewDaoQueryHelper()
 	//queryHelper.setFullTableExecute(true)
 	queryHelper.Bind(resultType{}, `test`)
-	return NewQueryExecutor(db, *queryHelper)
+	return NewQueryExecutorForTesting(*queryHelper)
 }
 
 func TestExecutor_SelectList(t *testing.T) {
@@ -36,6 +31,10 @@ func TestExecutor_SelectList(t *testing.T) {
 	result := make([]resultType, 0)
 	err := executor.Select(context.Background(), resultType{}, &result)
 	ast.Nil(err, `execute the select failed`)
+}
+
+func testPtrToStruct(ptrObj any) {
+
 }
 
 func TestQueryExecutorImpl_SelectPage(t *testing.T) {
@@ -54,6 +53,13 @@ func TestQueryExecutorImpl_Get(t *testing.T) {
 	exist, err := executor.Get(context.Background(), resultType{}, &result)
 	ast.Nil(err, `execute the select failed`)
 	ast.Truef(exist, `no result found`)
+}
+
+func TestQueryExecutorImpl_GetById(t *testing.T) {
+	executor := prepareExecutor()
+	result := resultType{}
+	executor.GetById(context.Background(), null.IntFrom(1), &result)
+
 }
 
 func TestQueryExecutorImpl_Insert(t *testing.T) {
