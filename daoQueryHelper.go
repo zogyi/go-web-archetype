@@ -276,7 +276,7 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.
 	if len(columns) <= 0 {
 		columns = []string{`*`}
 	}
-	entityName := reflect.TypeOf(queryObj).Name()
+	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entitiesInfos := gd.entitiesInfos[entityName]
 	var (
@@ -341,7 +341,7 @@ func (gd *DaoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) 
 
 //update remove the common fields
 func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
-	entityName := reflect.TypeOf(queryObj).Name()
+	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
 	var (
@@ -388,7 +388,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.Extra
 }
 
 func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
-	entityName := reflect.TypeOf(queryObj).Name()
+	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
 
@@ -417,7 +417,7 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.Extra
 }
 
 func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
-	entityName := reflect.TypeOf(queryObj).Name()
+	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfo := gd.entitiesInfos[entityName]
 	var (
@@ -469,12 +469,20 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.Extra
 
 func (gd *DaoQueryHelper) validate(queryObj any) (result map[base.FieldInfo]any) {
 	intfType := reflect.TypeOf(queryObj)
-	intfVal := reflect.ValueOf(queryObj)
-	var returnIntf reflect.Value
-	if intfType.Kind() == reflect.Struct {
-		returnIntf = reflect.New(intfType)
-		returnIntf.Elem().Set(intfVal)
+	var intfVal, returnIntf reflect.Value
+	if intfType.Kind() == reflect.Ptr {
+		if reflect.ValueOf(queryObj).IsNil() {
+			panic(`invalid param`)
+		}
+		intfType = intfType.Elem()
+		intfVal = reflect.ValueOf(queryObj).Elem()
+	} else if intfType.Kind() == reflect.Struct {
+		intfVal = reflect.ValueOf(queryObj)
 	}
+
+	returnIntf = reflect.New(intfType)
+	returnIntf.Elem().Set(intfVal)
+
 	var structFields structInfo
 	var ok bool
 	if structFields, ok = gd.entitiesInfos[intfType.Name()]; !ok {
@@ -505,4 +513,15 @@ func (gd *DaoQueryHelper) validate(queryObj any) (result map[base.FieldInfo]any)
 		}
 	}
 	return
+}
+
+func getType(queryObj any) string {
+	if t := reflect.TypeOf(queryObj); t.Kind() == reflect.Ptr {
+		if reflect.ValueOf(queryObj).IsNil() {
+			panic(`invalid param`)
+		}
+		return t.Elem().Name()
+	} else {
+		return t.Name()
+	}
 }

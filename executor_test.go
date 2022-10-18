@@ -10,7 +10,7 @@ import (
 )
 
 type resultType struct {
-	Id     int         `db:"id"`
+	Id     int         `db:"id" json:"id"`
 	Field1 null.String `db:"field1" json:"field1"`
 	Field2 null.String `db:"field2" json:"field2"`
 	Field3 null.String `db:"field3" json:"field3"`
@@ -18,7 +18,7 @@ type resultType struct {
 }
 
 func prepareExecutor() QueryExecutor {
-	log.InitLog(`/Users/zhongyi/workspace/golang/go-web-archetype/logs/`, `debug`)
+	log.InitLog(`./testing/logs/`, `debug`)
 	queryHelper := NewDaoQueryHelper()
 	//queryHelper.setFullTableExecute(true)
 	queryHelper.Bind(resultType{}, `test`)
@@ -41,7 +41,7 @@ func TestQueryExecutorImpl_SelectPage(t *testing.T) {
 	ast := assert.New(t)
 	executor := prepareExecutor()
 	result := make([]resultType, 0)
-	total, err := executor.SelectPage(context.Background(), resultType{}, &result)
+	total, err := executor.SelectPage(context.Background(), resultType{Id: 14}, &result)
 	ast.Nil(err, `execute the select failed`)
 	ast.GreaterOrEqual(total, uint64(0), `the count is not greater or equal 0`)
 }

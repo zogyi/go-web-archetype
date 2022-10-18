@@ -182,12 +182,8 @@ func (executor *QueryExecutorImpl) GetById(ctx context.Context, id null.Int, res
 		args         []interface{}
 		queryWrapper = base.ExtraQueryWrapper{QueryExtension: base.QueryExtension{Query: base.Query{Condition: []base.SqlTranslate{base.QueryItem{Field: `id`, Operator: base.QPEq, Value: id}}}}}
 	)
-	//TODO: fix me pls
-	fmt.Println(reflect.Indirect(reflect.ValueOf(result)).Elem().Type())
-	rv := reflect.ValueOf(result)
-	newStructure := reflect.New(rv.Type().Elem())
 
-	if query, args, err = executor.queryHelper.selectQuery(newStructure, queryWrapper); err != nil {
+	if query, args, err = executor.queryHelper.selectQuery(result, queryWrapper); err != nil {
 		return
 	}
 
