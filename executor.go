@@ -21,12 +21,20 @@ type Connection interface {
 
 func selectList[T Connection](conn T, sqlQuery string, args []interface{}, result any) error {
 	zap.L().Debug(fmt.Sprintf(`SQL: %s, args: %s`, sqlQuery, fmt.Sprint(args)))
-	return conn.Select(result, sqlQuery, args...)
+	err := conn.Select(result, sqlQuery, args...)
+	if err != nil {
+		zap.L().Info(fmt.Sprintf(`error occurred when execute select list method, error message: %s `, err.Error()))
+	}
+	return err
 }
 
 func get[T Connection](conn T, sqlQuery string, args []interface{}, result interface{}) error {
 	zap.L().Debug(fmt.Sprintf(`SQL: %s, args: %s`, sqlQuery, fmt.Sprint(args)))
-	return conn.Get(result, sqlQuery, args...)
+	err := conn.Get(result, sqlQuery, args...)
+	if err != nil {
+		zap.L().Info(fmt.Sprintf(`error occurred when execute select list method, error message: %s `, err.Error()))
+	}
+	return err
 }
 
 func executeQuery[T Connection](conn T, sqlQuery string, args []interface{}) (result sql.Result, err error) {
@@ -39,9 +47,14 @@ func executeQuery[T Connection](conn T, sqlQuery string, args []interface{}) (re
 		return
 	default:
 		if statement, err = conn.Preparex(sqlQuery); err != nil {
+			zap.L().Info(fmt.Sprintf(`error occurred when execute select list method, error message: %s `, err.Error()))
 			return
 		}
-		return statement.Exec(args...)
+		result, err = statement.Exec(args...)
+		if err != nil {
+			zap.L().Info(fmt.Sprintf(`error occurred when execute select list method, error message: %s `, err.Error()))
+		}
+		return
 	}
 }
 
@@ -59,6 +72,9 @@ type QueryExecutor interface {
 
 	GetBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error)
 	GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error)
+
+	//SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64)
+	//SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64)
 
 	ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error)
 	ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error)
@@ -131,6 +147,37 @@ func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet 
 	}
 	return selectList(executor.db, query, args, resultSet)
 }
+
+//TODO fixme
+//func (executor *QueryExecutorImpl) SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64) {
+//	var (
+//		sql           string
+//		args          []interface{}
+//		queryWrapper  = base.ExtraQueryWrapper{}
+//		selectBuilder sq.SelectBuilder
+//	)
+//	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+//		queryWrapper = *wrapper
+//	}
+//	if queryWrapper.Pagination.PageSize <= 0 {
+//		queryWrapper.Pagination.PageSize = 10
+//	}
+//	if sql, args, err = sqlizer.ToSql(); err == nil {
+//		selectBuilder = sq.SelectBuilder{}.From(sql)
+//		countBuilder := sq.Select(`count(*) as totalCount`).FromSelect(selectBuilder, `t1`)
+//		pageBuilder := selectBuilder.Offset((queryWrapper.Pagination.CurrentPage) * queryWrapper.Pagination.PageSize).
+//			Limit(queryWrapper.Pagination.PageSize)
+//		if err = executor.GetBySqlBuilder(ctx, &total, countBuilder); err == nil {
+//			err = executor.SelectBySqlBuilder(ctx, resultSet, pageBuilder)
+//		}
+//
+//	}
+//	return
+//}
+//
+//func (executor *QueryExecutorImpl) SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64) {
+//	return
+//}
 
 //GetByQuery get query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {
@@ -246,13 +293,12 @@ func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any,
 		args         []interface{}
 		queryWrapper = base.ExtraQueryWrapper{}
 	)
-	if queryWrapper.Pagination.PageSize <= 0 {
-		queryWrapper.Pagination.PageSize = 10
-	}
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
 	}
-
+	if queryWrapper.Pagination.PageSize <= 0 {
+		queryWrapper.Pagination.PageSize = 10
+	}
 	if sql, args, err = executor.queryHelper.count(queryObj, queryWrapper); err != nil {
 		return
 	}
