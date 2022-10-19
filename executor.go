@@ -73,8 +73,8 @@ type QueryExecutor interface {
 	GetBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error)
 	GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error)
 
-	//SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64)
-	//SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64)
+	SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64)
+	SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64)
 
 	ExecuteBySqlBuilder(ctx context.Context, sqlizer sq.Sqlizer) (result sql.Result, err error)
 	ExecuteByQuery(ctx context.Context, query string, args ...interface{}) (result sql.Result, err error)
@@ -148,36 +148,43 @@ func (executor *QueryExecutorImpl) SelectByQuery(ctx context.Context, resultSet 
 	return selectList(executor.db, query, args, resultSet)
 }
 
-//TODO fixme
-//func (executor *QueryExecutorImpl) SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64) {
-//	var (
-//		sql           string
-//		args          []interface{}
-//		queryWrapper  = base.ExtraQueryWrapper{}
-//		selectBuilder sq.SelectBuilder
-//	)
-//	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
-//		queryWrapper = *wrapper
-//	}
-//	if queryWrapper.Pagination.PageSize <= 0 {
-//		queryWrapper.Pagination.PageSize = 10
-//	}
-//	if sql, args, err = sqlizer.ToSql(); err == nil {
-//		selectBuilder = sq.SelectBuilder{}.From(sql)
-//		countBuilder := sq.Select(`count(*) as totalCount`).FromSelect(selectBuilder, `t1`)
-//		pageBuilder := selectBuilder.Offset((queryWrapper.Pagination.CurrentPage) * queryWrapper.Pagination.PageSize).
-//			Limit(queryWrapper.Pagination.PageSize)
-//		if err = executor.GetBySqlBuilder(ctx, &total, countBuilder); err == nil {
-//			err = executor.SelectBySqlBuilder(ctx, resultSet, pageBuilder)
-//		}
-//
-//	}
-//	return
-//}
-//
-//func (executor *QueryExecutorImpl) SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64) {
-//	return
-//}
+func (executor *QueryExecutorImpl) SelectPageBySqlBuilder(ctx context.Context, resultSet any, sqlizer sq.Sqlizer) (err error, total uint64) {
+	var (
+		sql  string
+		args []interface{}
+	)
+	if sql, args, err = sqlizer.ToSql(); err == nil {
+		return executor.SelectPageByQuery(ctx, resultSet, sql, args...)
+	}
+	return
+}
+
+func (executor *QueryExecutorImpl) SelectPageByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error, total uint64) {
+	var (
+		sql          string
+		countArgs    []interface{}
+		pageArgs     []interface{}
+		queryWrapper = base.ExtraQueryWrapper{}
+	)
+	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
+		queryWrapper = *wrapper
+	}
+	if queryWrapper.Pagination.PageSize <= 0 {
+		queryWrapper.Pagination.PageSize = 10
+	}
+	countBuilder := sq.Select(`count(*) as totalCount`).From(fmt.Sprintf(`(%s) as tmpPaging`, query))
+	if sql, countArgs, err = countBuilder.ToSql(); err == nil {
+		if err = executor.GetByQuery(ctx, &total, sql, append(args, countArgs...)...); err == nil {
+			pageBuilder := sq.Select(`tmpPaging.*`).From(fmt.Sprintf(`(%s) as tmpPaging`, query)).
+				Offset((queryWrapper.Pagination.CurrentPage) * queryWrapper.Pagination.PageSize).
+				Limit(queryWrapper.Pagination.PageSize)
+			if sql, pageArgs, err = pageBuilder.ToSql(); err == nil {
+				err = executor.SelectByQuery(ctx, resultSet, sql, append(args, pageArgs...)...)
+			}
+		}
+	}
+	return
+}
 
 //GetByQuery get query, using normal connection if the context doesn't have the transaction connection.
 func (executor *QueryExecutorImpl) GetByQuery(ctx context.Context, resultSet any, query string, args ...interface{}) (err error) {

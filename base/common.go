@@ -32,9 +32,71 @@ type Operation string
 type OrderByType string
 
 type QueryExtension struct {
-	Query   Query     `json:"query"`
-	GroupBy []string  `json:"groupBy"`
-	OrderBy []OrderBy `json:"orderBy"`
+	Pagination  util.Pagination
+	CurrentUser string
+	Query       Query     `json:"query"`
+	GroupBy     []string  `json:"groupBy"`
+	OrderBy     []OrderBy `json:"orderBy"`
+}
+
+type QueryExtensionBuilder interface {
+	Pagination(pagination util.Pagination) QueryExtensionBuilder
+	CurrentUser(username string) QueryExtensionBuilder
+	Query(query Query) QueryExtensionBuilder
+	GroupBy(groupBy ...string) QueryExtensionBuilder
+	OrderBy(orderBy ...OrderBy) QueryExtensionBuilder
+	Build() QueryExtension
+}
+
+type queryExtensionBuilder struct {
+	pagination util.Pagination
+	username   string
+	query      Query
+	groupBy    []string
+	orderBy    []OrderBy
+}
+
+func (qeb *queryExtensionBuilder) Pagination(pagination util.Pagination) QueryExtensionBuilder {
+	qeb.pagination = pagination
+	return qeb
+}
+
+func (qeb *queryExtensionBuilder) CurrentUser(username string) QueryExtensionBuilder {
+	qeb.username = username
+	return qeb
+}
+
+func (qeb *queryExtensionBuilder) Query(query Query) QueryExtensionBuilder {
+	qeb.query = query
+	return qeb
+}
+
+func (qeb *queryExtensionBuilder) GroupBy(groupBy ...string) QueryExtensionBuilder {
+	if qeb.groupBy == nil {
+		qeb.groupBy = make([]string, 0)
+	}
+	qeb.groupBy = append(qeb.groupBy, groupBy...)
+	return qeb
+}
+
+func (qeb *queryExtensionBuilder) OrderBy(orderBy ...OrderBy) QueryExtensionBuilder {
+	if qeb.orderBy == nil {
+		qeb.orderBy = make([]OrderBy, 0)
+	}
+	qeb.orderBy = append(qeb.orderBy, orderBy...)
+	return qeb
+}
+
+func (qeb *queryExtensionBuilder) Build() QueryExtension {
+	return QueryExtension{
+		Query:   qeb.query,
+		GroupBy: qeb.groupBy,
+		OrderBy: qeb.orderBy,
+	}
+}
+
+func NewQueryExtensionBuilder() QueryExtensionBuilder {
+	return &queryExtensionBuilder{}
 }
 
 type ExtraQueryWrapper struct {
@@ -43,8 +105,47 @@ type ExtraQueryWrapper struct {
 	QueryExtension  QueryExtension
 }
 
+type QueryWrapperBuilder interface {
+	Username(username string) QueryWrapperBuilder
+	Pagination(pagination util.Pagination) QueryWrapperBuilder
+	QueryExtension(extension QueryExtension) QueryWrapperBuilder
+	Build() ExtraQueryWrapper
+}
+
+type queryWrapperBuilder struct {
+	currentUsername string
+	pagination      util.Pagination
+	queryExtension  QueryExtension
+}
+
+func (qwb *queryWrapperBuilder) Username(username string) QueryWrapperBuilder {
+	qwb.currentUsername = username
+	return qwb
+}
+
+func (qwb *queryWrapperBuilder) Pagination(pagination util.Pagination) QueryWrapperBuilder {
+	qwb.pagination = pagination
+	return qwb
+}
+func (qwb *queryWrapperBuilder) QueryExtension(extension QueryExtension) QueryWrapperBuilder {
+	qwb.queryExtension = extension
+	return qwb
+}
+
+func (qwb *queryWrapperBuilder) Build() ExtraQueryWrapper {
+	return ExtraQueryWrapper{
+		CurrentUsername: qwb.currentUsername,
+		Pagination:      qwb.pagination,
+		QueryExtension:  qwb.queryExtension,
+	}
+}
+
+func NewQueryWrapperBuilder() QueryWrapperBuilder {
+	return &queryWrapperBuilder{}
+}
+
 type CommonFields struct {
-	Id         null.Int        `json:"id" archType:"primaryKey,autoFill"`
+	Id         null.Int        `json:"id" db:"id" archType:"primaryKey,autoFill"`
 	CreateTime util.MyNullTime `json:"createTime" db:"create_time" archType:"autoFill"`
 	CreatorBy  null.String     `json:"createBy" db:"create_by" archType:"autoFill"`
 	UpdateTime util.MyNullTime `json:"updateTime" db:"update_time" archType:"autoFill"`

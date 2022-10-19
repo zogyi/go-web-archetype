@@ -78,7 +78,7 @@ func (qi QueryItem) ToSQL(json2Fields map[string]FieldInfo) (sqlizer sq.Sqlizer,
 	if fieldInfo, exist := json2Fields[qi.Field]; exist {
 		column = fieldInfo.TableField
 	} else {
-		return nil, errors.New(`can't find the column`)
+		return nil, errors.New(fmt.Sprintf(`can't find the column, field name is %s`, qi.Field))
 	}
 	switch qi.Operator {
 	case QPIn:
@@ -137,6 +137,39 @@ const (
 	AND Connector = `AND`
 	OR  Connector = `OR`
 )
+
+type QueryBuilder interface {
+	Operator(connector Connector) QueryBuilder
+	Condition(translate ...SqlTranslate) QueryBuilder
+	Build() Query
+}
+
+type queryBuilder struct {
+	operation Connector
+	condition []SqlTranslate
+}
+
+func (qb *queryBuilder) Operator(connector Connector) QueryBuilder {
+	qb.operation = connector
+	return qb
+}
+func (qb *queryBuilder) Condition(translate ...SqlTranslate) QueryBuilder {
+	if qb.condition == nil {
+		qb.condition = make([]SqlTranslate, 0)
+	}
+	qb.condition = append(qb.condition, translate...)
+	return qb
+}
+func (qb *queryBuilder) Build() Query {
+	return Query{
+		Operator:  qb.operation,
+		Condition: qb.condition,
+	}
+}
+
+func NewQueryBuilder() QueryBuilder {
+	return &queryBuilder{}
+}
 
 type Query struct {
 	Operator  Connector      `json:"connector"`
