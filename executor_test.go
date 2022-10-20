@@ -32,9 +32,8 @@ func TestExecutor_SelectList(t *testing.T) {
 	ast := assert.New(t)
 	executor := prepareExecutor()
 	result := make([]resultType, 0)
-	queryWrapper := base.NewQueryWrapperBuilder().
-		QueryExtension(base.NewQueryExtensionBuilder().Query(
-			base.NewQueryBuilder().Condition(base.QueryItem{Field: `field1`, Operator: base.QPEqSmb, Value: `123`}).Build()).Build()).Build()
+	queryWrapper := base.NewQueryExtensionBuilder().Query(
+		base.NewQueryBuilder().Condition(base.NewQueryItem(`field1`, base.QPEqSmb, `123`)).Build()).Build()
 
 	err := executor.Select(base.SetQueryWrapper(context.Background(), &queryWrapper), resultType{CommonFields: base.CommonFields{Id: null.IntFrom(1)}}, &result)
 	ast.Nil(err, `execute the select failed`)

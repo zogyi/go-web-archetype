@@ -41,6 +41,10 @@ type QueryItem struct {
 	Value    interface{}   `json:"value"`
 }
 
+func NewQueryItem(field string, operator QueryOperator, value any) QueryItem {
+	return QueryItem{field, operator, value}
+}
+
 func (qi *QueryItem) UnmarshalJSON(data []byte) (err error) {
 	var queryItemRawMsg map[string]*json.RawMessage
 	if err = json.Unmarshal(data, &queryItemRawMsg); err == nil {
