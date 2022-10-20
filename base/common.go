@@ -99,51 +99,6 @@ func NewQueryExtensionBuilder() QueryExtensionBuilder {
 	return &queryExtensionBuilder{}
 }
 
-type ExtraQueryWrapper struct {
-	CurrentUsername string
-	Pagination      util.Pagination
-	QueryExtension  QueryExtension
-}
-
-type QueryWrapperBuilder interface {
-	Username(username string) QueryWrapperBuilder
-	Pagination(pagination util.Pagination) QueryWrapperBuilder
-	QueryExtension(extension QueryExtension) QueryWrapperBuilder
-	Build() ExtraQueryWrapper
-}
-
-type queryWrapperBuilder struct {
-	currentUsername string
-	pagination      util.Pagination
-	queryExtension  QueryExtension
-}
-
-func (qwb *queryWrapperBuilder) Username(username string) QueryWrapperBuilder {
-	qwb.currentUsername = username
-	return qwb
-}
-
-func (qwb *queryWrapperBuilder) Pagination(pagination util.Pagination) QueryWrapperBuilder {
-	qwb.pagination = pagination
-	return qwb
-}
-func (qwb *queryWrapperBuilder) QueryExtension(extension QueryExtension) QueryWrapperBuilder {
-	qwb.queryExtension = extension
-	return qwb
-}
-
-func (qwb *queryWrapperBuilder) Build() ExtraQueryWrapper {
-	return ExtraQueryWrapper{
-		CurrentUsername: qwb.currentUsername,
-		Pagination:      qwb.pagination,
-		QueryExtension:  qwb.queryExtension,
-	}
-}
-
-func NewQueryWrapperBuilder() QueryWrapperBuilder {
-	return &queryWrapperBuilder{}
-}
-
 type CommonFields struct {
 	Id         null.Int        `json:"id" db:"id" archType:"primaryKey,autoFill"`
 	CreateTime util.MyNullTime `json:"createTime" db:"create_time" archType:"autoFill"`
@@ -201,13 +156,13 @@ func ExtractTx(ctx context.Context) (tx *sqlx.Tx, ok bool) {
 	return
 }
 
-func SetQueryWrapper(ctx context.Context, queryWrapper *ExtraQueryWrapper) context.Context {
-	return context.WithValue(ctx, `queryWrapper`, queryWrapper)
+func SetQueryWrapper(ctx context.Context, queryExtension *QueryExtension) context.Context {
+	return context.WithValue(ctx, `queryExtension`, queryExtension)
 }
 
-func ExtractQueryWrapper(ctx context.Context) (tx *ExtraQueryWrapper, ok bool) {
+func ExtractQueryWrapper(ctx context.Context) (tx *QueryExtension, ok bool) {
 	if ctx.Value(`queryWrapper`) != nil {
-		if tx, ok = ctx.Value(`queryWrapper`).(*ExtraQueryWrapper); ok {
+		if tx, ok = ctx.Value(`queryExtension`).(*QueryExtension); ok {
 			return
 		}
 	}

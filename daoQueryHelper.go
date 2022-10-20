@@ -253,7 +253,7 @@ func extractFieldsInfo(field reflect.StructField) (base.FieldInfo, bool) {
 		IsLogicDel:   isLogicDel}, true
 }
 
-func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery base.QueryExtension) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).
 		FromSelect(builder, `t1`).
@@ -262,17 +262,17 @@ func (gd *DaoQueryHelper) selectPageQuery(queryObj any, extraQuery base.ExtraQue
 
 }
 
-func (gd *DaoQueryHelper) count(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) count(queryObj any, extraQuery base.QueryExtension) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`count(*) as totalCount`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) selectQuery(queryObj any, extraQuery base.QueryExtension) (sql string, args []interface{}, err error) {
 	builder := gd.TransferToSelectBuilder(queryObj, extraQuery)
 	return sq.Select(`*`).FromSelect(builder, `t1`).ToSql()
 }
 
-func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.ExtraQueryWrapper, columns ...string) (selectBuilder sq.SelectBuilder) {
+func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.QueryExtension, columns ...string) (selectBuilder sq.SelectBuilder) {
 	if len(columns) <= 0 {
 		columns = []string{`*`}
 	}
@@ -285,8 +285,8 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.
 		eqClause              = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQuery.QueryExtension.Query, base.Query{}) {
-		if querySqlizer, err = extraQuery.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+	if !reflect.DeepEqual(extraQuery.Query, base.Query{}) {
+		if querySqlizer, err = extraQuery.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
 	}
@@ -312,10 +312,10 @@ func (gd *DaoQueryHelper) TransferToSelectBuilder(queryObj any, extraQuery base.
 	if sqlizer != nil {
 		selectBuilder = selectBuilder.Where(sqlizer)
 	}
-	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.QueryExtension.GroupBy)
+	currentColumns := gd.jsonFields2Columns(queryObj, extraQuery.GroupBy)
 	selectBuilder = selectBuilder.GroupBy(currentColumns...)
 	subOrderBy := make([]string, 0)
-	for _, orderByItem := range extraQuery.QueryExtension.OrderBy {
+	for _, orderByItem := range extraQuery.OrderBy {
 		orderByItem.SetColumn(gd.jsonFields2Columns(queryObj, orderByItem.JSONFields))
 		crtOrderSQL := orderByItem.ToSql()
 		if strings.TrimSpace(crtOrderSQL) != `` {
@@ -340,7 +340,7 @@ func (gd *DaoQueryHelper) jsonFields2Columns(queryObj any, jsonFields []string) 
 }
 
 //update remove the common fields
-func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.QueryExtension) (sql string, args []interface{}, err error) {
 	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
@@ -349,8 +349,8 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.Extra
 		setMap       = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, base.Query{}) {
-		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+	if !reflect.DeepEqual(extraQueryWrapper.Query, base.Query{}) {
+		if querySqlizer, err = extraQueryWrapper.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
 	}
@@ -376,7 +376,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.Extra
 		if val.TableField == base.FixedColumnUpdateTime {
 			setMap[base.FixedColumnUpdateTime] = time.Now()
 		} else if val.TableField == base.FixedColumnUpdateBy {
-			setMap[base.FixedColumnUpdateBy] = extraQueryWrapper.CurrentUsername
+			setMap[base.FixedColumnUpdateBy] = extraQueryWrapper.CurrentUser
 		}
 	}
 	builder := sq.Update(table).SetMap(setMap)
@@ -387,7 +387,7 @@ func (gd *DaoQueryHelper) updateQuery(queryObj any, extraQueryWrapper base.Extra
 	return builder.ToSql()
 }
 
-func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.QueryExtension) (sql string, args []interface{}, err error) {
 	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfos := gd.entitiesInfos[entityName]
@@ -408,7 +408,7 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.Extra
 		if val.TableField == base.FixedColumnCreateTime {
 			setMap[base.FixedColumnCreateTime] = time.Now()
 		} else if val.TableField == base.FixedColumnCreateBy {
-			setMap[base.FixedColumnCreateBy] = extraQueryWrapper.CurrentUsername
+			setMap[base.FixedColumnCreateBy] = extraQueryWrapper.CurrentUser
 		} else if val.TableField == base.FixedColumnDel {
 			setMap[base.FixedColumnDel] = false
 		}
@@ -416,7 +416,7 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.Extra
 	return sq.Insert(table).SetMap(setMap).ToSql()
 }
 
-func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.ExtraQueryWrapper) (sql string, args []interface{}, err error) {
+func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.QueryExtension) (sql string, args []interface{}, err error) {
 	entityName := getType(queryObj)
 	table := gd.entityTableMapping[entityName]
 	entityInfo := gd.entitiesInfos[entityName]
@@ -425,8 +425,8 @@ func (gd *DaoQueryHelper) deleteQuery(queryObj any, extraQueryWrapper base.Extra
 		eqClause              = sq.Eq{}
 	)
 
-	if !reflect.DeepEqual(extraQueryWrapper.QueryExtension.Query, base.Query{}) {
-		if querySqlizer, err = extraQueryWrapper.QueryExtension.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
+	if !reflect.DeepEqual(extraQueryWrapper.Query, base.Query{}) {
+		if querySqlizer, err = extraQueryWrapper.Query.ToSQL(gd.entitiesInfos[entityName].jsonFieldInfos); err != nil {
 			panic(err)
 		}
 	}

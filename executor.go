@@ -89,7 +89,7 @@ type QueryExecutor interface {
 	WithTxFunction(ctx context.Context, txFunc func(context.Context) error) (err error)
 
 	GetTable(queryObj any) (string, bool)
-	TransferToSelectBuilder(queryObj any, wrapper base.ExtraQueryWrapper, columns ...string) sq.SelectBuilder
+	TransferToSelectBuilder(queryObj any, wrapper base.QueryExtension, columns ...string) sq.SelectBuilder
 	GetColumns(entity any) ([]string, bool)
 	GetIdentifier(entity any) (base.FieldInfo, bool)
 }
@@ -113,7 +113,7 @@ func (executor *QueryExecutorImpl) GetTable(queryObj any) (table string, exist b
 }
 
 //TransferToSelectBuilder create select builder according to the query object and the query wrapper
-func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper base.ExtraQueryWrapper, columns ...string) sq.SelectBuilder {
+func (excutor *QueryExecutorImpl) TransferToSelectBuilder(queryObj any, wrapper base.QueryExtension, columns ...string) sq.SelectBuilder {
 	return excutor.queryHelper.TransferToSelectBuilder(queryObj, wrapper, columns...)
 }
 
@@ -164,7 +164,7 @@ func (executor *QueryExecutorImpl) SelectPageByQuery(ctx context.Context, result
 		sql          string
 		countArgs    []interface{}
 		pageArgs     []interface{}
-		queryWrapper = base.ExtraQueryWrapper{}
+		queryWrapper = base.QueryExtension{}
 	)
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
@@ -234,7 +234,7 @@ func (executor *QueryExecutorImpl) GetById(ctx context.Context, id null.Int, res
 	var (
 		query        string
 		args         []interface{}
-		queryWrapper = base.ExtraQueryWrapper{QueryExtension: base.QueryExtension{Query: base.Query{Condition: []base.SqlTranslate{base.QueryItem{Field: `id`, Operator: base.QPEq, Value: id}}}}}
+		queryWrapper = base.QueryExtension{Query: base.Query{Condition: []base.SqlTranslate{base.QueryItem{Field: `id`, Operator: base.QPEq, Value: id}}}}
 	)
 
 	if query, args, err = executor.queryHelper.selectQuery(result, queryWrapper); err != nil {
@@ -256,7 +256,7 @@ func (executor *QueryExecutorImpl) Get(ctx context.Context, queryObj any, result
 	var (
 		query        string
 		args         []interface{}
-		queryWrapper = base.ExtraQueryWrapper{}
+		queryWrapper = base.QueryExtension{}
 	)
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
@@ -280,7 +280,7 @@ func (executor *QueryExecutorImpl) MustGet(ctx context.Context, queryObj any, re
 	var (
 		sql          string
 		args         []interface{}
-		queryWrapper = base.ExtraQueryWrapper{}
+		queryWrapper = base.QueryExtension{}
 	)
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
@@ -298,7 +298,7 @@ func (executor *QueryExecutorImpl) SelectPage(ctx context.Context, queryObj any,
 	var (
 		sql          string
 		args         []interface{}
-		queryWrapper = base.ExtraQueryWrapper{}
+		queryWrapper = base.QueryExtension{}
 	)
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
@@ -325,7 +325,7 @@ func (executor *QueryExecutorImpl) Select(ctx context.Context, queryObj any, res
 		sql  string
 		args []interface{}
 	)
-	var queryWrapper = base.ExtraQueryWrapper{}
+	var queryWrapper = base.QueryExtension{}
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
 	}
@@ -341,7 +341,7 @@ func (executor *QueryExecutorImpl) Update(ctx context.Context, queryObj any) (re
 		sql  string
 		args []interface{}
 	)
-	var queryWrapper = base.ExtraQueryWrapper{}
+	var queryWrapper = base.QueryExtension{}
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
 	}
@@ -358,7 +358,7 @@ func (executor *QueryExecutorImpl) Delete(ctx context.Context, queryObj any) (re
 		sql  string
 		args []interface{}
 	)
-	var queryWrapper = base.ExtraQueryWrapper{}
+	var queryWrapper = base.QueryExtension{}
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
 	}
@@ -375,7 +375,7 @@ func (executor *QueryExecutorImpl) Insert(ctx context.Context, queryObj any) (re
 		sql  string
 		args []interface{}
 	)
-	var queryWrapper = base.ExtraQueryWrapper{}
+	var queryWrapper = base.QueryExtension{}
 	if wrapper, ok := base.ExtractQueryWrapper(ctx); ok {
 		queryWrapper = *wrapper
 	}

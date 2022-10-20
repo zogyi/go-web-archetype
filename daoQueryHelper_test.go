@@ -63,7 +63,7 @@ func TestGenericDao_deleteQuery(t *testing.T) {
 		//Field4: util.MyNullTime{Time: null.TimeFrom(setTime)},
 		//Filed5: null.IntFrom(1),
 	}
-	sql, args, err := dao.deleteQuery(item1, base.ExtraQueryWrapper{})
+	sql, args, err := dao.deleteQuery(item1, base.QueryExtension{})
 	fmt.Println(sql)
 	fmt.Println(args)
 	fmt.Println(err)
@@ -80,12 +80,12 @@ func TestDaoQueryHelper_insertQuery(t *testing.T) {
 		Field3:       null.BoolFrom(false),
 		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.insertQuery(item1, base.ExtraQueryWrapper{}))
+	fmt.Println(dao.insertQuery(item1, base.QueryExtension{}))
 
 	item1 = TestStruct1{
 		Field1: null.StringFrom(`field2-1`),
 	}
-	fmt.Println(dao.insertQuery(item1, base.ExtraQueryWrapper{}))
+	fmt.Println(dao.insertQuery(item1, base.QueryExtension{}))
 }
 
 func TestDaoQueryHelper_updateQuery(t *testing.T) {
@@ -96,10 +96,10 @@ func TestDaoQueryHelper_updateQuery(t *testing.T) {
 		Field1:       null.StringFrom(`field2-1`),
 		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.updateQuery(item1, base.ExtraQueryWrapper{}))
+	fmt.Println(dao.updateQuery(item1, base.QueryExtension{}))
 
 	item1 = TestStruct1{}
-	fmt.Println(dao.updateQuery(item1, base.ExtraQueryWrapper{}))
+	fmt.Println(dao.updateQuery(item1, base.QueryExtension{}))
 }
 
 func TestDaoQueryHelper_selectQuery(t *testing.T) {
@@ -111,10 +111,10 @@ func TestDaoQueryHelper_selectQuery(t *testing.T) {
 		Field1:       null.StringFrom(`field2-1`),
 		CommonFields: base.CommonFields{Id: null.IntFrom(1)},
 	}
-	fmt.Println(dao.selectQuery(item1, base.ExtraQueryWrapper{}))
+	fmt.Println(dao.selectQuery(item1, base.QueryExtension{}))
 
 	//item1 = TestStruct1{}
-	//fmt.Println(dao.updateQuery(item1, ExtraQueryWrapper{}))
+	//fmt.Println(dao.updateQuery(item1, QueryExtension{}))
 }
 
 func getQuery() (query base.Query, err error) {
@@ -144,7 +144,7 @@ func getQuery() (query base.Query, err error) {
 
 func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 	//dao := initGenericDao()
-	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//queryWrapper := NewDefaultQueryExtension()
 	//item := TestStruct1{
 	//	Id: null.IntFrom(1),
 	//	//Field1: null.StringFrom(`升级一下是试试看 `),
@@ -167,7 +167,7 @@ func TestGenericDao_SelectWithExtraQuery(t *testing.T) {
 
 func TestGenericDao_Delete(t *testing.T) {
 	//dao := initGenericDao()
-	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//queryWrapper := NewDefaultQueryExtension()
 	//item := TestStruct1{
 	//	//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
 	//}
@@ -176,7 +176,7 @@ func TestGenericDao_Delete(t *testing.T) {
 
 func TestGenericDao_Validate(t *testing.T) {
 	dao := initGenericDao()
-	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//queryWrapper := NewDefaultQueryExtension()
 	item := TestStruct1{
 		//Field2:     null.StringFrom(`测试删除`),
 		//CreateTime: util.MyNullTime{Time: null.TimeFrom(time.Now())},
@@ -197,7 +197,7 @@ func BenchmarkGenericDao_TransferToSelectBuilder(b *testing.B) {
 	}
 	dao := initGenericDao()
 	dao.Bind(TestStruct1{}, `test`)
-	//queryWrapper := NewDefaultExtraQueryWrapper()
+	//queryWrapper := NewDefaultQueryExtension()
 	//query, err := getQuery()
 	//if err != nil {
 	//	panic(err)
