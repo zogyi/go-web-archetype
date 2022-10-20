@@ -10,7 +10,7 @@ var (
 	ConstantVersion         = `0.0.1`
 	ConstantAccessTokenKey  = []byte("SGAU892T3JkhgJKSY8")
 	ConstantRefreshTokenKey = []byte("dajgd821GS8AT2JKSDGK")
-	AccessTokenExpireIn     = 30 * time.Second
+	AccessTokenExpireIn     = 30 * time.Minute
 	RefreshTokenExpireIn    = 7 * 24 * time.Hour
 )
 

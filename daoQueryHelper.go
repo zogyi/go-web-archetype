@@ -400,17 +400,17 @@ func (gd *DaoQueryHelper) insertQuery(queryObj any, extraQueryWrapper base.Query
 			err = errors.New(`don't set value for an auto filled field`)
 			return
 		}
-		setMap[fieldInfo.TableField] = val
+		setMap["`"+fieldInfo.TableField+"`"] = val
 	}
 
 	//TODO: extract this block into a common method
 	for _, val := range entityInfos.autoFilledFields {
 		if val.TableField == base.FixedColumnCreateTime {
-			setMap[base.FixedColumnCreateTime] = time.Now()
+			setMap["`"+base.FixedColumnCreateTime+"`"] = time.Now()
 		} else if val.TableField == base.FixedColumnCreateBy {
-			setMap[base.FixedColumnCreateBy] = extraQueryWrapper.CurrentUser
+			setMap["`"+base.FixedColumnCreateBy+"`"] = extraQueryWrapper.CurrentUser
 		} else if val.TableField == base.FixedColumnDel {
-			setMap[base.FixedColumnDel] = false
+			setMap["`"+base.FixedColumnDel+"`"] = false
 		}
 	}
 	return sq.Insert(table).SetMap(setMap).ToSql()
