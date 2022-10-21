@@ -10,15 +10,16 @@ import (
 )
 
 const (
-	FixedColumnCreateBy   string = `create_by`
-	FixedColumnUpdateBy   string = `update_by`
-	FixedColumnCreateTime string = `create_time`
-	FixedColumnUpdateTime string = `update_time`
-	FixedColumnDel        string = `del`
-	TagArchType           string = `archType`
-	TagPrimaryKey         string = `primaryKey`
-	TagAutoFilled         string = `autoFill`
-	DefaultUsername       string = `system`
+	FixedColumnCreateBy    string = `create_by`
+	FixedColumnUpdateBy    string = `update_by`
+	FixedColumnCreateTime  string = `create_time`
+	FixedColumnUpdateTime  string = `update_time`
+	FixedColumnDel         string = `del`
+	TagArchType            string = `archType`
+	TagPrimaryKey          string = `primaryKey`
+	TagAutoFilled          string = `autoFill`
+	DefaultUsername        string = `system`
+	ContextQueryWrapperKey string = `queryExtension`
 
 	Insert Operation   = `insert`
 	Update Operation   = `update`
@@ -157,12 +158,12 @@ func ExtractTx(ctx context.Context) (tx *sqlx.Tx, ok bool) {
 }
 
 func SetQueryWrapper(ctx context.Context, queryExtension *QueryExtension) context.Context {
-	return context.WithValue(ctx, `queryExtension`, queryExtension)
+	return context.WithValue(ctx, ContextQueryWrapperKey, queryExtension)
 }
 
 func ExtractQueryWrapper(ctx context.Context) (tx *QueryExtension, ok bool) {
-	if ctx.Value(`queryWrapper`) != nil {
-		if tx, ok = ctx.Value(`queryExtension`).(*QueryExtension); ok {
+	if ctx.Value(ContextQueryWrapperKey) != nil {
+		if tx, ok = ctx.Value(ContextQueryWrapperKey).(*QueryExtension); ok {
 			return
 		}
 	}
