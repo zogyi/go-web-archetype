@@ -23,11 +23,6 @@ type RolePath struct {
 
 type FieldsMapping map[string]map[string]string
 
-type PaginationResult struct {
-	List  interface{} `json:"list"`
-	Total uint64      `json:"total"`
-}
-
 type ResponseObj struct {
 	Success bool        `json:"success"`
 	ErrCode int         `json:"errCode"`
